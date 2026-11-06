@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block head %}
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    #map { height: 100%; min-height: 420px; }
+    .card-active { outline: 2px solid #2563eb; }
+    .leaflet-div-icon.pin { background: none; border: none; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <section class="max-w-7xl mx-auto px-4 mt-4">
+    <form id="filters" class="bg-white rounded-xl shadow p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1">{{ t('filter_type') }}</label>
+        <select name="type" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+          <option value="">{{ t('all') }}</option>
+          <option value="Rent">{{ t('type_Rent') }}</option>
+          <option value="Sale">{{ t('type_Sale') }}</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1">{{ t('filter_category') }}</label>
+        <select name="category" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+          <option value="">{{ t('all') }}</option>
+          <option value="House">{{ t('cat_House') }}</option>
+          <option value="Land">{{ t('cat_Land') }}</option>
+          <option value="Apartment">{{ t('cat_Apartment') }}</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1">{{ t('filter_area') }}</label>
+        <select name="neighborhood" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+          <option value="">{{ t('all') }}</option>
+          {% for n in neighborhoods %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1">{{ t('filter_min') }}</label>
+        <input type="number" name="min_price" min="0" placeholder="0"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1">{{ t('filter_max') }}</label>
+        <input type="number" name="max_price" min="0"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+      </div>
+      <div class="col-span-2 md:col-span-3 lg:col-span-1 flex gap-2">
+        <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg px-4 py-2 text-sm">{{ t('search') }}</button>
+        <button type="button" id="resetBtn" class="border border-slate-300 rounded-lg px-3 py-2 text-sm hover:bg-slate-100">{{ t('reset') }}</button>
+      </div>
+    </form>
+  </section>
+
+  <main class="max-w-7xl mx-auto px-4 py-4 grid grid-cols-1 lg:grid-cols-5 gap-4">
+    <div class="lg:col-span-3 lg:order-2 bg-white rounded-xl shadow overflow-hidden h-[420px] lg:h-[680px] lg:sticky lg:top-4">
+      <div id="map"></div>
+    </div>
+    <div class="lg:col-span-2 lg:order-1">
+      <p id="count" class="text-sm text-slate-500 mb-2">{{ t('loading') }}</p>
+      <div id="list" class="space-y-4 lg:max-h-[640px] lg:overflow-y-auto lg:pr-1"></div>
+    </div>
+  </main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const CENTER = [{{ center[0] }}, {{ center[1] }}];
+  const T = {{ js_t|tojson }};
+  const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500"><rect width="100%" height="100%" fill="#dbeafe"/>' +
+    '<text x="50%" y="50%" font-family="Arial" font-size="40" fill="#2563eb" text-anchor="middle" dominant-baseline="middle">' +
+    T.no_photo + '</text></svg>');
+
+  const PIN = L.divIcon({
+    className: 'pin',
+    iconSize: [34, 44], iconAnchor: [17, 44], popupAnchor: [0, -40],
+    html: '<svg xmlns="http://www.w3.org/2000/svg" width="34" height="44" viewBox="0 0 34 44">' +
+          '<path d="M17 1C8.7 1 2 7.7 2 16c0 11 15 27 15 27s15-16 15-27C32 7.7 25.3 1 17 1z" fill="#1d4ed8" stroke="#fff" stroke-width="2"/>' +
+          '<polygon points="17,8 26,16 8,16" fill="#fff"/><rect x="11.5" y="16" width="11" height="8" fill="#fff"/>' +
+          '<rect x="15.5" y="19" width="3" height="5" fill="#1d4ed8"/></svg>'
+  });
+
+  const map = L.map('map').setView(CENTER, 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(map);
+  const markerLayer = L.layerGroup().addTo(map);
+  const markers = {};
+
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const priceLabel = p => '$' + Number(p.price).toLocaleString('en-US') +
+    (p.type === 'Rent' ? ' ' + T.per_month : '');
+  const waLink = p => {
+    const text = T.wa_message.replace('{id}', () => p.id).replace('{title}', () => p.title);
+    return 'https://wa.me/' + encodeURIComponent(p.whatsapp_number) + '?text=' + encodeURIComponent(text);
+  };
+  const verifiedBadge = '<span class="inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap">✔ ' + esc(T.verified) + '</span>';
+
+  function waButton(p, small) {
+    return '<a href="' + waLink(p) + '" target="_blank" rel="noopener" style="color:#fff" ' +
+      'class="flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg w-full ' +
+      (small ? 'px-3 py-1.5 text-xs' : 'px-4 py-2.5 text-sm') + '">💬 ' + esc(T.contact_wa) + '</a>';
+  }
+
+  function cardHTML(p) {
+    const img = p.images[0] || PLACEHOLDER;
+    return `
+    <article id="card-${p.id}" data-id="${p.id}" class="bg-white rounded-xl shadow overflow-hidden cursor-pointer hover:shadow-lg transition">
+      <div class="relative">
+        <img src="${esc(img)}" alt="${esc(p.title)}" loading="lazy" class="w-full h-44 object-cover"
+             onerror="this.onerror=null;this.src=PLACEHOLDER">
+        <span class="absolute top-2 left-2 bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded">${esc(T['type_' + p.type])}</span>
+        <span class="absolute top-2 right-2 bg-white/90 text-slate-700 text-xs font-semibold px-2 py-1 rounded">${esc(T['cat_' + p.category])}</span>
+      </div>
+      <div class="p-4">
+        <div class="flex items-start justify-between gap-2">
+          <h3 class="font-semibold leading-snug">${esc(p.title)}</h3>
+          ${p.is_verified ? verifiedBadge : ''}
+        </div>
+        <p class="text-blue-700 font-bold text-lg mt-1">${esc(priceLabel(p))}</p>
+        <p class="text-sm text-slate-500">📍 ${esc(p.neighborhood)} · ID #${p.id}</p>
+        <p class="text-sm text-slate-600 mt-2" style="display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">${esc(p.description)}</p>
+        <div class="mt-3 space-y-2" onclick="event.stopPropagation()">
+          ${waButton(p, false)}
+          <a href="/property/${p.id}" class="block text-center text-sm text-blue-700 font-semibold hover:underline">${esc(T.view_details)} →</a>
+        </div>
+      </div>
+    </article>`;
+  }
+
+  function popupHTML(p) {
+    const img = p.images[0] || PLACEHOLDER;
+    return `
+    <div style="width:210px">
+      <img src="${esc(img)}" style="width:100%;height:100px;object-fit:cover;border-radius:6px" onerror="this.onerror=null;this.src=PLACEHOLDER">
+      <div style="font-weight:600;margin-top:6px">${esc(p.title)}</div>
+      <div style="color:#1d4ed8;font-weight:700">${esc(priceLabel(p))}</div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:6px">📍 ${esc(p.neighborhood)} ${p.is_verified ? '· ✔ ' + esc(T.verified) : ''}</div>
+      ${waButton(p, true)}
+      <a href="/property/${p.id}" style="display:block;text-align:center;font-size:12px;margin-top:6px">${esc(T.view_details)} →</a>
+    </div>`;
+  }
+
+  function highlightCard(id) {
+    document.querySelectorAll('#list article').forEach(a => a.classList.remove('card-active'));
+    const el = document.getElementById('card-' + id);
+    if (el) { el.classList.add('card-active'); el.scrollIntoView({behavior: 'smooth', block: 'nearest'}); }
+  }
+
+  async function loadProperties() {
+    const params = new URLSearchParams(new FormData(document.getElementById('filters')));
+    [...params.keys()].forEach(k => { if (!params.get(k)) params.delete(k); });
+    const listEl = document.getElementById('list');
+    try {
+      const res = await fetch('/api/properties?' + params.toString());
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+
+      markerLayer.clearLayers();
+      Object.keys(markers).forEach(k => delete markers[k]);
+      document.getElementById('count').textContent =
+        data.length === 1 ? T.found_1 : T.found_n.replace('{n}', data.length);
+
+      if (!data.length) {
+        listEl.innerHTML = '<div class="bg-white rounded-xl shadow p-6 text-center text-slate-500">' + esc(T.none_found) + '</div>';
+        return;
+      }
+      listEl.innerHTML = data.map(cardHTML).join('');
+
+      const bounds = [];
+      data.forEach(p => {
+        const m = L.marker([p.latitude, p.longitude], { icon: PIN }).addTo(markerLayer).bindPopup(popupHTML(p));
+        m.on('click', () => highlightCard(p.id));
+        markers[p.id] = m;
+        bounds.push([p.latitude, p.longitude]);
+      });
+      if (bounds.length === 1) map.setView(bounds[0], 15);
+      else map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+
+      listEl.querySelectorAll('article').forEach(el => {
+        el.addEventListener('click', () => {
+          const id = el.dataset.id;
+          highlightCard(id);
+          const m = markers[id];
+          if (m) { map.flyTo(m.getLatLng(), 16); m.openPopup(); }
+          if (window.innerWidth < 1024) document.getElementById('map').scrollIntoView({behavior: 'smooth', block: 'center'});
+        });
+      });
+    } catch (err) {
+      listEl.innerHTML = '<div class="bg-red-100 text-red-700 rounded-xl p-4">' + esc(T.load_error) + '</div>';
+      console.error(err);
+    }
+  }
+
+  document.getElementById('filters').addEventListener('submit', e => { e.preventDefault(); loadProperties(); });
+  document.getElementById('resetBtn').addEventListener('click', () => { document.getElementById('filters').reset(); loadProperties(); });
+  ['type', 'category', 'neighborhood'].forEach(n =>
+    document.querySelector('[name=' + n + ']').addEventListener('change', loadProperties));
+  loadProperties();
+</script>
+{% endblock %}

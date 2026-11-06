@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}{{ t('form_edit_title') if editing else t('form_add_title') }} – {{ brand }}{% endblock %}
+{% block head %}
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}
+
+{% block content %}
+<main class="max-w-5xl mx-auto px-4 py-6">
+  <h1 class="text-xl font-bold mb-1">{{ t('form_edit_title') if editing else t('form_add_title') }}</h1>
+  {% if not current_user['is_admin'] %}
+    <p class="text-sm text-slate-500 mb-4">{{ t('review_note') }}</p>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-2">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+
+    <section class="bg-white rounded-xl shadow p-5 space-y-4">
+      <div>
+        <label class="block text-sm font-semibold mb-1">{{ t('f_title') }} *</label>
+        <input name="title" required maxlength="120" value="{{ form.get('title', '') }}"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+      </div>
+      <div>
+        <label class="block text-sm font-semibold mb-1">{{ t('f_description') }}</label>
+        <textarea name="description" rows="4" maxlength="2000"
+                  class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">{{ form.get('description', '') }}</textarea>
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="block text-sm font-semibold mb-1">{{ t('filter_type') }} *</label>
+          <select name="type" required class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+            {% for x in ['Rent', 'Sale'] %}<option value="{{ x }}" {{ 'selected' if form.get('type') == x }}>{{ t('type_' ~ x) }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-1">{{ t('filter_category') }} *</label>
+          <select name="category" required class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+            {% for x in ['House', 'Land', 'Apartment'] %}<option value="{{ x }}" {{ 'selected' if form.get('category') == x }}>{{ t('cat_' ~ x) }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-1">{{ t('f_price') }} *</label>
+          <input type="number" name="price" min="1" step="any" required value="{{ form.get('price', '') }}"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 -mt-2">{{ t('f_price_hint') }}</p>
+
+      <div>
+        <label class="block text-sm font-semibold mb-1">{{ t('f_neighborhood') }} *</label>
+        <input name="neighborhood" list="hoods" required maxlength="60" value="{{ form.get('neighborhood', '') }}"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+        <datalist id="hoods">{% for n in neighborhoods %}<option value="{{ n }}">{% endfor %}</datalist>
+      </div>
+
+      <div>
+        <label class="block text-sm font-semibold mb-1">{{ t('f_whatsapp') }} *</label>
+        <input name="whatsapp_number" required inputmode="numeric" value="{{ form.get('whatsapp_number', '') }}"
+               placeholder="252907123456" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+        <p class="text-xs text-slate-400 mt-1">{{ t('f_whatsapp_hint') }}</p>
+      </div>
+
+      {% if images %}
+      <div>
+        <p class="block text-sm font-semibold mb-2">{{ t('f_current_photos') }}</p>
+        <div class="grid grid-cols-3 gap-2">
+          {% for img in images %}
+            <label class="relative block cursor-pointer">
+              <img src="{{ img.url }}" alt="" class="w-full h-20 object-cover rounded border">
+              <input type="checkbox" name="delete_image" value="{{ img.id }}" class="absolute top-1 right-1 w-4 h-4 accent-red-600">
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div>
+        <label class="block text-sm font-semibold mb-1">{{ t('f_photos') }}</label>
+        <input type="file" name="images" accept="image/jpeg,image/png,image/webp" multiple
+               class="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:font-semibold file:text-blue-700">
+        <p class="text-xs text-slate-400 mt-1">{{ t('f_photos_hint') }}</p>
+      </div>
+
+      {% if current_user['is_admin'] %}
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" name="is_verified" value="1" {{ 'checked' if form.get('is_verified') }} class="w-4 h-4 accent-blue-600">
+        ✔ {{ t('f_verified') }}
+      </label>
+      {% endif %}
+    </section>
+
+    <section class="bg-white rounded-xl shadow p-5 space-y-4 h-fit">
+      <div>
+        <h2 class="text-sm font-semibold">{{ t('location') }} *</h2>
+        <p class="text-xs text-slate-500">{{ t('f_location_hint') }}</p>
+      </div>
+      <div id="map" class="h-72 rounded-lg overflow-hidden border border-slate-200"></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-semibold mb-1">{{ t('f_lat') }}</label>
+          <input id="lat" name="latitude" required value="{{ form.get('latitude', '') }}" placeholder="11.2842"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-1">{{ t('f_lng') }}</label>
+          <input id="lng" name="longitude" required value="{{ form.get('longitude', '') }}" placeholder="49.1816"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+        </div>
+      </div>
+      <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg px-4 py-3">
+        {{ t('f_save') }}
+      </button>
+    </section>
+  </form>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const CENTER = [{{ center[0] }}, {{ center[1] }}];
+  const latEl = document.getElementById('lat');
+  const lngEl = document.getElementById('lng');
+  const map = L.map('map').setView(CENTER, 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  let marker = null;
+  function setPoint(lat, lng) {
+    latEl.value = lat.toFixed(6);
+    lngEl.value = lng.toFixed(6);
+    if (!marker) {
+      marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+      marker.on('dragend', () => {
+        const p = marker.getLatLng();
+        latEl.value = p.lat.toFixed(6);
+        lngEl.value = p.lng.toFixed(6);
+      });
+    } else {
+      marker.setLatLng([lat, lng]);
+    }
+  }
+  map.on('click', e => setPoint(e.latlng.lat, e.latlng.lng));
+  function fromInputs() {
+    const lat = parseFloat(latEl.value), lng = parseFloat(lngEl.value);
+    if (!isNaN(lat) && !isNaN(lng)) { setPoint(lat, lng); map.setView([lat, lng], 15); }
+  }
+  latEl.addEventListener('change', fromInputs);
+  lngEl.addEventListener('change', fromInputs);
+  fromInputs();
+</script>
+{% endblock %}

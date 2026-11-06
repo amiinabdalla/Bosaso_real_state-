@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "_macros.html" import post_btn %}
+{% block title %}{{ t('admin_title') }} – {{ brand }}{% endblock %}
+{% block content %}
+{% set badge = {'pending': 'bg-amber-100 text-amber-800', 'approved': 'bg-green-100 text-green-700',
+                'rejected': 'bg-red-100 text-red-700', 'closed': 'bg-slate-200 text-slate-600'} %}
+{% macro row(p) %}
+<div class="bg-white rounded-xl shadow p-4 flex flex-col sm:flex-row gap-4">
+  <img src="{{ p.images[0] if p.images else url_for('static', filename='logo.svg') }}" alt="" class="w-full sm:w-32 h-24 object-cover rounded-lg bg-blue-50">
+  <div class="flex-1">
+    <div class="flex flex-wrap items-center gap-2">
+      <a href="{{ url_for('property_detail', pid=p.id) }}" class="font-semibold hover:underline">#{{ p.id }} · {{ p.title }}</a>
+      <span class="text-xs font-semibold px-2 py-0.5 rounded-full {{ badge[p.status] }}">{{ t('status_' ~ p.status) }}</span>
+      {% if p.is_verified %}<span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">✔ {{ t('verified') }}</span>{% endif %}
+    </div>
+    <p class="text-sm text-slate-500 mt-1">
+      {{ t('type_' ~ p.type) }} · {{ t('cat_' ~ p.category) }} · 📍 {{ p.neighborhood }} · ${{ '{:,.0f}'.format(p.price) }}
+      · {{ t('owner') }}: {{ p.owner_name or '—' }}{% if p.owner_email %} ({{ p.owner_email }}){% endif %}
+      · <a class="text-blue-700" href="https://wa.me/{{ p.whatsapp_number }}" target="_blank" rel="noopener">+{{ p.whatsapp_number }}</a>
+    </p>
+    <div class="flex flex-wrap gap-2 mt-3 text-sm">
+      {% if p.status != 'approved' %}
+        {{ post_btn(url_for('admin_action', pid=p.id), t('act_approve'), 'px-3 py-1.5 rounded-lg bg-green-600 text-white font-semibold', '', 'action', 'approve') }}
+      {% endif %}
+      {% if p.status != 'rejected' %}
+        {{ post_btn(url_for('admin_action', pid=p.id), t('act_reject'), 'px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50', '', 'action', 'reject') }}
+      {% endif %}
+      {% if p.is_verified %}
+        {{ post_btn(url_for('admin_action', pid=p.id), t('act_unverify'), 'px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50', '', 'action', 'unverify') }}
+      {% else %}
+        {{ post_btn(url_for('admin_action', pid=p.id), '✔ ' ~ t('act_verify'), 'px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 font-semibold', '', 'action', 'verify') }}
+      {% endif %}
+      <a href="{{ url_for('edit_property', pid=p.id) }}" class="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50">{{ t('act_edit') }}</a>
+      <form method="post" action="{{ url_for('delete_property', pid=p.id) }}" class="inline" onsubmit='return confirm({{ t("confirm_delete")|tojson }})'>
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <input type="hidden" name="back" value="{{ url_for('admin') }}">
+        <button class="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 font-semibold">{{ t('act_delete') }}</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+<main class="max-w-5xl mx-auto px-4 py-6">
+  <h1 class="text-xl font-bold mb-4">{{ t('admin_title') }}</h1>
+
+  <h2 class="font-semibold mb-2">{{ t('admin_pending') }} ({{ pending|length }})</h2>
+  <div class="space-y-3 mb-8">
+    {% for p in pending %}{{ row(p) }}{% else %}
+      <div class="bg-white rounded-xl shadow p-5 text-sm text-slate-500">{{ t('admin_none') }}</div>
+    {% endfor %}
+  </div>
+
+  <h2 class="font-semibold mb-2">{{ t('admin_all') }} ({{ props|length }})</h2>
+  <div class="space-y-3">
+    {% for p in props if p.status != 'pending' %}{{ row(p) }}{% else %}
+      <div class="bg-white rounded-xl shadow p-5 text-sm text-slate-500">{{ t('admin_none') }}</div>
+    {% endfor %}
+  </div>
+</main>
+{% endblock %}

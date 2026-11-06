@@ -1,0 +1,30 @@
+# Render Blueprint - New > Blueprint > pick your GitHub repo.
+# NOTE: a persistent disk needs a PAID instance (Starter). Free web services
+# cannot attach disks, so the database and photos would be wiped on redeploy.
+services:
+  - type: web
+    name: bosaso-homes
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --workers 1 --threads 4 --timeout 60
+    healthCheckPath: /healthz
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ADMIN_EMAIL          # you type this in the Render dashboard
+        sync: false
+      - key: ADMIN_PASSWORD       # you type this in the Render dashboard
+        sync: false
+      - key: ADMIN_WHATSAPP       # optional: 2529... number for "Report listing"
+        sync: false
+      - key: DATA_DIR
+        value: /var/data
+      - key: SEED_SAMPLES         # 0 = start with an empty marketplace
+        value: "0"
+      - key: BRAND_NAME
+        value: Bosaso Homes
+    disk:
+      name: bosaso-data
+      mountPath: /var/data
+      sizeGB: 1

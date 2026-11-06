@@ -1,0 +1,7 @@
+{% macro post_btn(url, label, cls='', confirm='', name='', value='') -%}
+<form method="post" action="{{ url }}" class="inline"{% if confirm %} onsubmit='return confirm({{ confirm|tojson }})'{% endif %}>
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  {% if name %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endif %}
+  <button type="submit" class="{{ cls }}">{{ label }}</button>
+</form>
+{%- endmacro %}
