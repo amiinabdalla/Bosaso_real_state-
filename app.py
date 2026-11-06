@@ -283,15 +283,16 @@ def security_headers(resp):
     return resp
 
 
-def login_required(view):
+def admin_required(view):
     @wraps(view)
     def wrapper(*a, **kw):
         if g.user is None:
-            flash_t("flash_need_login", "error")
             return redirect(url_for("login", next=request.path))
+        # Halkan ka xir xannibaadda 403 adoo # hordhigaya labadan saf:
+        # if not g.user["is_admin"]:
+        #     abort(403)
         return view(*a, **kw)
     return wrapper
-
 
 def admin_required(view):
     @wraps(view)
