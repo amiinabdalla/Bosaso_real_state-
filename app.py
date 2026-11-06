@@ -633,7 +633,7 @@ def logout():
 # Owner area: dashboard, add, edit, delete, close/reopen
 # --------------------------------------------------------------------------
 @app.route("/dashboard")
-@login_required
+@admin_required
 def dashboard():
     props = fetch_properties("p.owner_id = ?", (g.user["id"],))
     return render_template("dashboard.html", props=props)
