@@ -685,7 +685,7 @@ def add_property():
 
 
 @app.route("/edit/<int:pid>", methods=["GET", "POST"])
-@login_required
+@admin_required
 def edit_property(pid):
     prop = get_property_or_404(pid)
     if not can_manage(prop):
