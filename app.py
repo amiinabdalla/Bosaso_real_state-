@@ -759,7 +759,7 @@ def delete_property(pid):
 
 
 @app.route("/status/<int:pid>", methods=["POST"])
-@login_required
+@admin_required
 def change_status(pid):
     prop = get_property_or_404(pid)
     if not can_manage(prop):
