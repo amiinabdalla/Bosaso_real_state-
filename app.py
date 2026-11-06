@@ -643,7 +643,7 @@ def dashboard():
 @app.route("/add/", methods=["GET", "POST"])
 @app.route("/add-property", methods=["GET", "POST"])
 @app.route("/add_property", methods=["GET", "POST"])
-@login_required
+@admin_required
 def add_property():
     form = {"whatsapp_number": g.user["phone"] or ""}
     if request.method == "POST":
