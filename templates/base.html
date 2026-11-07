@@ -6,6 +6,7 @@
   <title>{% block title %}{{ brand }} – {{ t('tagline') }}{% endblock %}</title>
   <meta name="description" content="{% block meta_desc %}{{ t('tagline') }}{% endblock %}">
   <meta name="theme-color" content="#1d4ed8">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <meta property="og:site_name" content="{{ brand }}">
   <meta property="og:type" content="website">
   <meta property="og:title" content="{{ self.title() }}">
@@ -31,8 +32,9 @@
         <a href="{{ url_for('set_lang', code='so' if lang == 'en' else 'en') }}"
            class="border border-white/40 rounded-lg px-3 py-1.5 hover:bg-white/10">{{ 'Soomaali' if lang == 'en' else 'English' }}</a>
         {% if current_user %}
+          <a href="{{ url_for('my_favorites') }}" class="px-3 py-1.5 rounded-lg hover:bg-white/10">❤ {{ t('nav_favorites') }}</a>
           <a href="{{ url_for('dashboard') }}" class="px-3 py-1.5 rounded-lg hover:bg-white/10">{{ t('nav_dashboard') }}</a>
-          {% if current_user['is_admin'] %}
+          {% if current_user.is_admin %}
             <a href="{{ url_for('admin') }}" class="px-3 py-1.5 rounded-lg hover:bg-white/10">{{ t('nav_admin') }}</a>
           {% endif %}
           <form method="post" action="{{ url_for('logout') }}" class="inline">
@@ -66,6 +68,8 @@
     © {{ brand }} · {{ t('footer_note') }}
   </footer>
 
+  <script>window.FAV_T = {{ {'add': t('fav_add'), 'remove': t('fav_remove')}|tojson }};</script>
+  <script src="{{ url_for('static', filename='favorites.js') }}?v=1"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
