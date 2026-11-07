@@ -8,7 +8,7 @@
 {% block content %}
 <main class="max-w-5xl mx-auto px-4 py-6">
   <h1 class="text-xl font-bold mb-1">{{ t('form_edit_title') if editing else t('form_add_title') }}</h1>
-  {% if not current_user['is_admin'] %}
+  {% if not current_user.is_admin %}
     <p class="text-sm text-slate-500 mb-4">{{ t('review_note') }}</p>
   {% endif %}
 
@@ -36,7 +36,7 @@
         <div>
           <label class="block text-sm font-semibold mb-1">{{ t('filter_category') }} *</label>
           <select name="category" required class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
-            {% for x in ['House', 'Land', 'Apartment'] %}<option value="{{ x }}" {{ 'selected' if form.get('category') == x }}>{{ t('cat_' ~ x) }}</option>{% endfor %}
+            {% for x in ['House', 'Apartment', 'Land', 'Commercial'] %}<option value="{{ x }}" {{ 'selected' if form.get('category') == x }}>{{ t('cat_' ~ x) }}</option>{% endfor %}
           </select>
         </div>
         <div>
@@ -77,12 +77,14 @@
 
       <div>
         <label class="block text-sm font-semibold mb-1">{{ t('f_photos') }}</label>
-        <input type="file" name="images" accept="image/jpeg,image/png,image/webp" multiple
+        <input type="file" id="images" name="images" accept="image/jpeg,image/png,image/webp" multiple
                class="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:font-semibold file:text-blue-700">
         <p class="text-xs text-slate-400 mt-1">{{ t('f_photos_hint') }}</p>
+        <p id="pickedCount" class="text-xs text-blue-700 font-semibold mt-1"></p>
+        <div id="preview" class="grid grid-cols-3 gap-2 mt-2"></div>
       </div>
 
-      {% if current_user['is_admin'] %}
+      {% if current_user.is_admin %}
       <label class="flex items-center gap-2 text-sm">
         <input type="checkbox" name="is_verified" value="1" {{ 'checked' if form.get('is_verified') }} class="w-4 h-4 accent-blue-600">
         ✔ {{ t('f_verified') }}
@@ -149,5 +151,34 @@
   latEl.addEventListener('change', fromInputs);
   lngEl.addEventListener('change', fromInputs);
   fromInputs();
+
+  // ---- multiple photo picker: preview + client-side checks ----
+  const imgInput = document.getElementById('images');
+  const preview = document.getElementById('preview');
+  const pickedCount = document.getElementById('pickedCount');
+  const MAX_FILES = 6, MAX_BYTES = 12 * 1024 * 1024;
+  const MSG_COUNT = {{ t('e_images_count')|tojson }};
+  const MSG_BIG = {{ t('e_image_big')|tojson }};
+  const MSG_PICKED = {{ t('photos_selected')|tojson }};
+
+  function keptExisting() {
+    const all = document.querySelectorAll('input[name=delete_image]').length;
+    const removed = document.querySelectorAll('input[name=delete_image]:checked').length;
+    return all - removed;
+  }
+  imgInput.addEventListener('change', () => {
+    preview.innerHTML = ''; pickedCount.textContent = '';
+    const files = [...imgInput.files];
+    if (files.length + keptExisting() > MAX_FILES) { alert(MSG_COUNT); imgInput.value = ''; return; }
+    if (files.some(f => f.size > MAX_BYTES)) { alert(MSG_BIG); imgInput.value = ''; return; }
+    files.forEach(f => {
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(f);
+      img.className = 'w-full h-20 object-cover rounded border';
+      img.onload = () => URL.revokeObjectURL(img.src);
+      preview.appendChild(img);
+    });
+    if (files.length) pickedCount.textContent = MSG_PICKED.replace('{n}', files.length);
+  });
 </script>
 {% endblock %}
