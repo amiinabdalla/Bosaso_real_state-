@@ -5,3 +5,14 @@
   <button type="submit" class="{{ cls }}">{{ label }}</button>
 </form>
 {%- endmacro %}
+
+{% macro heart(pid, on, cls='', label='', remove_on_unfav=false) -%}
+<button type="button" class="fav-btn inline-flex items-center justify-center w-10 h-10 rounded-full bg-white/90 shadow hover:bg-white {{ cls }}"
+        data-id="{{ pid }}" data-fav="{{ 1 if on else 0 }}"{% if remove_on_unfav %} data-remove-on-unfav="1"{% endif %}
+        aria-pressed="{{ 'true' if on else 'false' }}" title="{{ label }}" aria-label="{{ label }}">
+  <svg class="pointer-events-none" width="22" height="22" viewBox="0 0 24 24" fill="{{ '#ef4444' if on else 'none' }}"
+       stroke="{{ '#ef4444' if on else '#475569' }}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+  </svg>
+</button>
+{%- endmacro %}
