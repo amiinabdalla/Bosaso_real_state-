@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% from "_macros.html" import post_btn %}
-{% set wa_text = t('wa_message', id=p.id, title=p.title) %}
+{% from "_macros.html" import heart %}
+{% set wa_text = t('wa_message', id=p.id, brand=brand) %}
 {% set price_text = '$' ~ '{:,.0f}'.format(p.price) ~ ((' ' ~ t('per_month')) if p.type == 'Rent' else '') %}
 
 {% block title %}{{ p.title }} – {{ brand }}{% endblock %}
@@ -24,16 +24,50 @@
   {% endif %}
 
   <div class="mt-4 grid grid-cols-1 lg:grid-cols-5 gap-6">
-    <!-- Gallery -->
+    <!-- Gallery / carousel -->
     <section class="lg:col-span-3">
       <div class="bg-white rounded-xl shadow overflow-hidden">
-        <img id="mainImg" src="{{ p.images[0] if p.images else '' }}" alt="{{ p.title }}"
-             class="w-full h-72 sm:h-96 object-cover bg-blue-100" onerror="this.onerror=null;this.src=PLACEHOLDER">
+        <div id="carousel" class="relative bg-blue-50 outline-none" tabindex="0" role="region"
+             aria-roledescription="carousel" aria-label="{{ p.title }}">
+          <div class="overflow-hidden">
+            <div id="track" class="flex transition-transform duration-300 ease-out" style="will-change:transform">
+              {% for img in p.images %}
+                <div class="min-w-full">
+                  <img src="{{ img }}" alt="{{ p.title }} ({{ loop.index }}/{{ loop.length }})"
+                       {% if not loop.first %}loading="lazy"{% endif %}
+                       class="w-full h-72 sm:h-96 object-cover" draggable="false"
+                       onerror="this.onerror=null;this.src=PLACEHOLDER">
+                </div>
+              {% else %}
+                <div class="min-w-full h-72 sm:h-96 flex flex-col items-center justify-center text-blue-400">
+                  <span class="text-6xl">🏠</span><span class="text-sm mt-2">{{ t('no_photo') }}</span>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          {{ heart(p.id, p.is_favorite, 'absolute top-3 right-3 z-10', t('fav_remove') if p.is_favorite else t('fav_add')) }}
+
+          {% if p.images|length > 1 %}
+            <button type="button" id="prevBtn" aria-label="{{ t('car_prev') }}"
+                    class="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 text-white text-2xl leading-none">‹</button>
+            <button type="button" id="nextBtn" aria-label="{{ t('car_next') }}"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 text-white text-2xl leading-none">›</button>
+            <span id="counter" class="absolute top-3 left-3 bg-black/60 text-white text-xs px-2 py-1 rounded-full">1 / {{ p.images|length }}</span>
+            <div id="dots" class="absolute bottom-3 left-0 right-0 flex justify-center gap-2">
+              {% for img in p.images %}
+                <button type="button" data-i="{{ loop.index0 }}" aria-label="{{ loop.index }}"
+                        class="w-2.5 h-2.5 rounded-full bg-white shadow"></button>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+
         {% if p.images|length > 1 %}
         <div class="flex gap-2 p-2 overflow-x-auto">
           {% for img in p.images %}
-            <img src="{{ img }}" alt="" loading="lazy" onclick="document.getElementById('mainImg').src=this.src"
-                 class="w-20 h-16 object-cover rounded cursor-pointer border-2 border-transparent hover:border-blue-500">
+            <img src="{{ img }}" alt="" loading="lazy" data-thumb="{{ loop.index0 }}"
+                 class="w-20 h-16 object-cover rounded cursor-pointer border-2 border-transparent shrink-0">
           {% endfor %}
         </div>
         {% endif %}
@@ -57,17 +91,24 @@
           <span class="bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded">{{ t('type_' ~ p.type) }}</span>
           <span class="bg-slate-100 text-slate-700 text-xs font-semibold px-2 py-1 rounded">{{ t('cat_' ~ p.category) }}</span>
           {% if p.is_verified %}
-            <span class="bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 rounded">✔ {{ t('verified') }}</span>
+            <span class="bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 rounded">{{ t('verified') }} 🛡️</span>
           {% endif %}
         </div>
         <h1 class="text-xl font-bold leading-snug">{{ p.title }}</h1>
         <p class="text-2xl font-extrabold text-blue-700 mt-2">{{ price_text }}</p>
         <p class="text-sm text-slate-500 mt-1">📍 {{ p.neighborhood }}, Bosaso · ID #{{ p.id }}</p>
 
+        <!-- Dynamic WhatsApp: property ID is inside the pre-filled text -->
         <a href="https://wa.me/{{ p.whatsapp_number }}?text={{ wa_text|urlencode }}" target="_blank" rel="noopener"
            class="mt-5 flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg px-4 py-3">
-          💬 {{ t('contact_wa') }}
+          💬 {{ t('wa_owner') }}
         </a>
+        {% if admin_whatsapp %}
+          <a href="https://wa.me/{{ admin_whatsapp }}?text={{ wa_text|urlencode }}" target="_blank" rel="noopener"
+             class="mt-2 flex items-center justify-center gap-2 border border-green-500 text-green-700 hover:bg-green-50 font-semibold rounded-lg px-4 py-2.5 text-sm">
+            🏢 {{ t('wa_office', brand=brand) }}
+          </a>
+        {% endif %}
 
         <button type="button" id="shareBtn"
                 class="mt-3 w-full border border-slate-300 rounded-lg px-4 py-2 text-sm hover:bg-slate-50">🔗 {{ t('share') }}</button>
@@ -94,9 +135,44 @@
     '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500"><rect width="100%" height="100%" fill="#dbeafe"/>' +
     '<text x="50%" y="50%" font-family="Arial" font-size="40" fill="#2563eb" text-anchor="middle" dominant-baseline="middle">' +
     {{ t('no_photo')|tojson }} + '</text></svg>');
-  const mainImg = document.getElementById('mainImg');
-  if (!mainImg.getAttribute('src')) mainImg.src = PLACEHOLDER;
 
+  // ---- Image carousel: arrows, dots, thumbnails, swipe, keyboard ----
+  (function () {
+    const track = document.getElementById('track');
+    const n = {{ p.images|length }};
+    if (!track || n < 2) return;
+    const carousel = document.getElementById('carousel');
+    const dots = [...document.querySelectorAll('#dots button')];
+    const thumbs = [...document.querySelectorAll('[data-thumb]')];
+    const counter = document.getElementById('counter');
+    let i = 0, startX = null;
+
+    function go(k) {
+      i = (k + n) % n;
+      track.style.transform = 'translateX(' + (-100 * i) + '%)';
+      dots.forEach((d, j) => { d.style.opacity = j === i ? '1' : '0.5'; d.style.transform = j === i ? 'scale(1.25)' : 'scale(1)'; });
+      thumbs.forEach((t, j) => { t.style.borderColor = j === i ? '#2563eb' : 'transparent'; });
+      counter.textContent = (i + 1) + ' / ' + n;
+    }
+    document.getElementById('prevBtn').addEventListener('click', () => go(i - 1));
+    document.getElementById('nextBtn').addEventListener('click', () => go(i + 1));
+    dots.forEach(d => d.addEventListener('click', () => go(+d.dataset.i)));
+    thumbs.forEach(t => t.addEventListener('click', () => go(+t.dataset.thumb)));
+    carousel.addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft') { go(i - 1); e.preventDefault(); }
+      if (e.key === 'ArrowRight') { go(i + 1); e.preventDefault(); }
+    });
+    carousel.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, { passive: true });
+    carousel.addEventListener('touchend', e => {
+      if (startX === null) return;
+      const dx = e.changedTouches[0].clientX - startX;
+      if (Math.abs(dx) > 40) go(dx < 0 ? i + 1 : i - 1);
+      startX = null;
+    });
+    go(0);
+  })();
+
+  // ---- Location map ----
   const pos = [{{ p.latitude }}, {{ p.longitude }}];
   const map = L.map('map', { scrollWheelZoom: false }).setView(pos, 16);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
