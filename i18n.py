@@ -20,6 +20,11 @@ _T = {
     "filter_type": ("Type", "Nooca"),
     "filter_category": ("Category", "Qaybta"),
     "filter_area": ("Neighborhood", "Xaafadda"),
+    "filter_location": ("Location (neighborhood)", "Goobta (xaafadda)"),
+    "filter_property_type": ("Property type", "Nooca hantida"),
+    "filter_status": ("Rent / Sale", "Kiro / Iib"),
+    "filter_q": ("Search", "Raadi"),
+    "filter_q_ph": ("Title, description, area…", "Cinwaan, sharaxaad, xaafad…"),
     "filter_min": ("Min price ($)", "Qiimaha ugu hooseeya ($)"),
     "filter_max": ("Max price ($)", "Qiimaha ugu sarreeya ($)"),
     "all": ("All", "Dhammaan"),
@@ -38,13 +43,32 @@ _T = {
     "cat_House": ("House", "Guri"),
     "cat_Land": ("Land", "Dhul"),
     "cat_Apartment": ("Apartment", "Apartment"),
+    "cat_Commercial": ("Commercial", "Ganacsi"),
     "per_month": ("/ month", "/ bishii"),
     "verified": ("Verified", "La xaqiijiyey"),
     "contact_wa": ("Contact on WhatsApp", "Kala xiriir WhatsApp"),
     "no_photo": ("No photo", "Sawir ma jiro"),
     "view_details": ("View details", "Eeg faahfaahinta"),
-    "wa_message": ("Hi, I am interested in property ID #{id} ({title})",
-                   "Salaan, waxaan xiiseynayaa liiska ID #{id} ({title})"),
+    "wa_message": ("Hello {brand} team, I would like details about property ID:{id}",
+                   "Nabad xafiiska {brand}, waxaan rabay faahfaahinta guriga ID:{id}"),
+    "wa_owner": ("Contact owner on WhatsApp", "Mulkiilaha WhatsApp kala xiriir"),
+    "wa_office": ("Ask the {brand} office", "Weydii xafiiska {brand}"),
+
+    # favorites
+    "nav_favorites": ("Saved", "La kaydiyey"),
+    "fav_add": ("Save this property", "Kaydi liiskan"),
+    "fav_remove": ("Remove from saved", "Ka saar kaydka"),
+    "fav_title": ("My saved properties", "Guryaha aan kaydiyey"),
+    "fav_empty": ("You have not saved any properties yet. Tap the heart on a listing to save it.",
+                  "Weli wax liis ah ma aadan kaydin. Riix qalbiga liiska si aad u kaydiso."),
+    "fav_browse": ("Browse properties", "Daawo liisaska"),
+
+    # photo gallery / upload
+    "car_prev": ("Previous photo", "Sawirka hore"),
+    "car_next": ("Next photo", "Sawirka xiga"),
+    "photos_selected": ("{n} photo(s) selected", "{n} sawir ayaa la doortay"),
+    "e_image_big": ("A photo is too big (max 12 MB each).",
+                    "Sawir aad buu u weyn yahay (ugu badnaan 12 MB mid kasta)."),
 
     # detail page
     "back_to_map": ("← Back to map", "← Ku noqo khariidadda"),
@@ -149,6 +173,8 @@ _T = {
                       "JPG, PNG ama WebP oo keliya ayaa la ogol yahay."),
     "e_images_count": ("You can have at most 6 photos.",
                        "Waxaad haysan kartaa ugu badnaan 6 sawir."),
+    "e_images_upload": ("Photo upload failed. Please try again.",
+                        "Sawirka lama soo gelin karin. Mar kale isku day."),
     "e_images_bad": ("One of the photos could not be read.",
                      "Sawirrada mid ma la akhrin karin."),
     "e_name": ("Please enter your name.", "Fadlan geli magacaaga."),
@@ -179,6 +205,7 @@ JS_KEYS = (
     "loading", "found_n", "found_1", "none_found", "load_error", "per_month",
     "verified", "contact_wa", "no_photo", "view_details", "wa_message",
     "type_Rent", "type_Sale", "cat_House", "cat_Land", "cat_Apartment",
+    "cat_Commercial", "fav_add", "fav_remove",
 )
 
 
