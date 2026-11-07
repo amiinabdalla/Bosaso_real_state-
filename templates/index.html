@@ -10,43 +10,49 @@
 {% endblock %}
 
 {% block content %}
+  <!-- Search & advanced filters. Fields = query parameters of /api/properties -->
   <section class="max-w-7xl mx-auto px-4 mt-4">
-    <form id="filters" class="bg-white rounded-xl shadow p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
+    <form id="filters" class="bg-white rounded-xl shadow p-4 grid grid-cols-2 md:grid-cols-4 gap-3 items-end" autocomplete="off">
+      <div class="col-span-2">
+        <label class="block text-xs font-semibold text-slate-500 mb-1" for="f-q">{{ t('filter_q') }}</label>
+        <input id="f-q" type="search" name="q" maxlength="100" placeholder="{{ t('filter_q_ph') }}"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+      </div>
       <div>
-        <label class="block text-xs font-semibold text-slate-500 mb-1">{{ t('filter_type') }}</label>
-        <select name="type" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+        <label class="block text-xs font-semibold text-slate-500 mb-1" for="f-location">{{ t('filter_location') }}</label>
+        <input id="f-location" name="location" list="areas" maxlength="60" placeholder="Baalade…"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+        <datalist id="areas">{% for n in neighborhoods %}<option value="{{ n }}">{% endfor %}</datalist>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1" for="f-type">{{ t('filter_property_type') }}</label>
+        <select id="f-type" name="property_type" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+          <option value="">{{ t('all') }}</option>
+          <option value="House">{{ t('cat_House') }}</option>
+          <option value="Apartment">{{ t('cat_Apartment') }}</option>
+          <option value="Land">{{ t('cat_Land') }}</option>
+          <option value="Commercial">{{ t('cat_Commercial') }}</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1" for="f-status">{{ t('filter_status') }}</label>
+        <select id="f-status" name="status" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
           <option value="">{{ t('all') }}</option>
           <option value="Rent">{{ t('type_Rent') }}</option>
           <option value="Sale">{{ t('type_Sale') }}</option>
         </select>
       </div>
       <div>
-        <label class="block text-xs font-semibold text-slate-500 mb-1">{{ t('filter_category') }}</label>
-        <select name="category" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
-          <option value="">{{ t('all') }}</option>
-          <option value="House">{{ t('cat_House') }}</option>
-          <option value="Land">{{ t('cat_Land') }}</option>
-          <option value="Apartment">{{ t('cat_Apartment') }}</option>
-        </select>
-      </div>
-      <div>
-        <label class="block text-xs font-semibold text-slate-500 mb-1">{{ t('filter_area') }}</label>
-        <select name="neighborhood" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
-          <option value="">{{ t('all') }}</option>
-          {% for n in neighborhoods %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
-        </select>
-      </div>
-      <div>
-        <label class="block text-xs font-semibold text-slate-500 mb-1">{{ t('filter_min') }}</label>
-        <input type="number" name="min_price" min="0" placeholder="0"
+        <label class="block text-xs font-semibold text-slate-500 mb-1" for="f-min">{{ t('filter_min') }}</label>
+        <input id="f-min" type="number" name="min_price" min="0" inputmode="numeric" placeholder="0"
                class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
       </div>
       <div>
-        <label class="block text-xs font-semibold text-slate-500 mb-1">{{ t('filter_max') }}</label>
-        <input type="number" name="max_price" min="0"
+        <label class="block text-xs font-semibold text-slate-500 mb-1" for="f-max">{{ t('filter_max') }}</label>
+        <input id="f-max" type="number" name="max_price" min="0" inputmode="numeric"
                class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
       </div>
-      <div class="col-span-2 md:col-span-3 lg:col-span-1 flex gap-2">
+      <div class="flex gap-2">
         <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg px-4 py-2 text-sm">{{ t('search') }}</button>
         <button type="button" id="resetBtn" class="border border-slate-300 rounded-lg px-3 py-2 text-sm hover:bg-slate-100">{{ t('reset') }}</button>
       </div>
@@ -68,6 +74,7 @@
 <script>
   const CENTER = [{{ center[0] }}, {{ center[1] }}];
   const T = {{ js_t|tojson }};
+  const BRAND = {{ brand|tojson }};
   const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500"><rect width="100%" height="100%" fill="#dbeafe"/>' +
     '<text x="50%" y="50%" font-family="Arial" font-size="40" fill="#2563eb" text-anchor="middle" dominant-baseline="middle">' +
@@ -95,10 +102,11 @@
   const priceLabel = p => '$' + Number(p.price).toLocaleString('en-US') +
     (p.type === 'Rent' ? ' ' + T.per_month : '');
   const waLink = p => {
-    const text = T.wa_message.replace('{id}', () => p.id).replace('{title}', () => p.title);
+    const text = T.wa_message.replace('{brand}', () => BRAND).replace('{id}', () => p.id);
     return 'https://wa.me/' + encodeURIComponent(p.whatsapp_number) + '?text=' + encodeURIComponent(text);
   };
-  const verifiedBadge = '<span class="inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap">✔ ' + esc(T.verified) + '</span>';
+  const verifiedBadge = '<span class="inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap">' +
+    esc(T.verified) + ' 🛡️</span>';
 
   function waButton(p, small) {
     return '<a href="' + waLink(p) + '" target="_blank" rel="noopener" style="color:#fff" ' +
@@ -113,8 +121,11 @@
       <div class="relative">
         <img src="${esc(img)}" alt="${esc(p.title)}" loading="lazy" class="w-full h-44 object-cover"
              onerror="this.onerror=null;this.src=PLACEHOLDER">
-        <span class="absolute top-2 left-2 bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded">${esc(T['type_' + p.type])}</span>
-        <span class="absolute top-2 right-2 bg-white/90 text-slate-700 text-xs font-semibold px-2 py-1 rounded">${esc(T['cat_' + p.category])}</span>
+        <div class="absolute top-2 left-2 flex gap-1">
+          <span class="bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded">${esc(T['type_' + p.type])}</span>
+          <span class="bg-white/90 text-slate-700 text-xs font-semibold px-2 py-1 rounded">${esc(T['cat_' + p.category])}</span>
+        </div>
+        ${heartButton(p.id, p.is_favorite, 'absolute top-2 right-2')}
       </div>
       <div class="p-4">
         <div class="flex items-start justify-between gap-2">
@@ -139,7 +150,7 @@
       <img src="${esc(img)}" style="width:100%;height:100px;object-fit:cover;border-radius:6px" onerror="this.onerror=null;this.src=PLACEHOLDER">
       <div style="font-weight:600;margin-top:6px">${esc(p.title)}</div>
       <div style="color:#1d4ed8;font-weight:700">${esc(priceLabel(p))}</div>
-      <div style="font-size:12px;color:#64748b;margin-bottom:6px">📍 ${esc(p.neighborhood)} ${p.is_verified ? '· ✔ ' + esc(T.verified) : ''}</div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:6px">📍 ${esc(p.neighborhood)} ${p.is_verified ? '· ' + esc(T.verified) + ' 🛡️' : ''}</div>
       ${waButton(p, true)}
       <a href="/property/${p.id}" style="display:block;text-align:center;font-size:12px;margin-top:6px">${esc(T.view_details)} →</a>
     </div>`;
@@ -151,12 +162,32 @@
     if (el) { el.classList.add('card-active'); el.scrollIntoView({behavior: 'smooth', block: 'nearest'}); }
   }
 
+  // ---- filters <-> URL (?location=..&property_type=..&status=..&min_price=..&max_price=..&q=..)
+  const form = document.getElementById('filters');
+  const FIELDS = ['q', 'location', 'property_type', 'status', 'min_price', 'max_price'];
+  const OLD_NAMES = { status: 'type', property_type: 'category', location: 'neighborhood' };
+
+  (function prefillFromUrl() {
+    const sp = new URLSearchParams(window.location.search);
+    FIELDS.forEach(n => {
+      let v = sp.get(n);
+      if (v === null && OLD_NAMES[n]) v = sp.get(OLD_NAMES[n]);
+      if (v !== null) form.elements[n].value = v;
+    });
+  })();
+
+  function currentParams() {
+    const p = new URLSearchParams();
+    FIELDS.forEach(n => { const v = (form.elements[n].value || '').trim(); if (v) p.set(n, v); });
+    return p;
+  }
+
   async function loadProperties() {
-    const params = new URLSearchParams(new FormData(document.getElementById('filters')));
-    [...params.keys()].forEach(k => { if (!params.get(k)) params.delete(k); });
+    const params = currentParams();
+    history.replaceState(null, '', params.toString() ? '?' + params.toString() : window.location.pathname);
     const listEl = document.getElementById('list');
     try {
-      const res = await fetch('/api/properties?' + params.toString());
+      const res = await fetch('/api/properties?' + params.toString(), { credentials: 'same-origin' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
 
@@ -182,7 +213,8 @@
       else map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
 
       listEl.querySelectorAll('article').forEach(el => {
-        el.addEventListener('click', () => {
+        el.addEventListener('click', ev => {
+          if (ev.target.closest('.fav-btn')) return;          // heart handles itself
           const id = el.dataset.id;
           highlightCard(id);
           const m = markers[id];
@@ -196,10 +228,13 @@
     }
   }
 
-  document.getElementById('filters').addEventListener('submit', e => { e.preventDefault(); loadProperties(); });
-  document.getElementById('resetBtn').addEventListener('click', () => { document.getElementById('filters').reset(); loadProperties(); });
-  ['type', 'category', 'neighborhood'].forEach(n =>
-    document.querySelector('[name=' + n + ']').addEventListener('change', loadProperties));
+  const debounce = (fn, ms) => { let h; return (...a) => { clearTimeout(h); h = setTimeout(() => fn(...a), ms); }; };
+  const debouncedLoad = debounce(loadProperties, 350);
+
+  form.addEventListener('submit', e => { e.preventDefault(); loadProperties(); });
+  document.getElementById('resetBtn').addEventListener('click', () => { form.reset(); loadProperties(); });
+  ['property_type', 'status'].forEach(n => form.elements[n].addEventListener('change', loadProperties));
+  ['q', 'location', 'min_price', 'max_price'].forEach(n => form.elements[n].addEventListener('input', debouncedLoad));
   loadProperties();
 </script>
 {% endblock %}
