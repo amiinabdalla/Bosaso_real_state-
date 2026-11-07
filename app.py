@@ -193,9 +193,9 @@ def _ensure_admin():
 password = "amiinhomelocal1234"     # <--- Halkan geli password-kaaga
     explicit = bool(password)
     if not IS_PROD and not password:      # local development convenience only
-        email = email or "admin@bosaso.local"
-        password = "admin123"
-        print("[dev] Admin login -> admin@bosaso.local / admin123")
+        email = email or "AmiinAdminBosaso.local@gmail.com"
+        password = "amiinhomelocal1234"
+        print("[dev] Admin login -> AmiinAdminBosaso.local@gmail.com / amiinhomelocal1234")
     if not email or not password:
         print("[warn] ADMIN_EMAIL / ADMIN_PASSWORD not set: no admin account created.")
         return
