@@ -1,9 +1,17 @@
 """
-Bosaso Homes - Real Estate & Land Marketplace (Flask + SQLite)
+Bosaso Homes - Real Estate & Land Marketplace (Flask + SQLAlchemy)
 
 Local:   python app.py                 -> http://127.0.0.1:5000
 Render:  gunicorn app:app --workers 1 --threads 4   (see render.yaml)
+
+Storage modes (chosen automatically from environment variables):
+  DATABASE_URL    set -> PostgreSQL (production)   | not set -> SQLite file (local)
+  CLOUDINARY_URL  set -> photos on Cloudinary      | not set -> photos in ./uploads
+
+Models live in models.py:  User, Property, Image (one-to-many), Favorite.
 """
+import io
+import math
 import os
 import re
 import secrets
@@ -16,11 +24,17 @@ from functools import wraps
 from flask import (Flask, Response, abort, flash, g, jsonify, redirect,
                    render_template, request, send_from_directory, session,
                    url_for)
-from PIL import Image, ImageOps
+from PIL import Image as PILImage
+from PIL import ImageOps
+from sqlalchemy import case, event, func, or_, select, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from i18n import JS_KEYS, LANGS, tr
+from models import Favorite, Image, Property, User, db
 
 # --------------------------------------------------------------------------
 # Configuration (everything sensitive comes from environment variables)
@@ -28,8 +42,16 @@ from i18n import JS_KEYS, LANGS, tr
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 IS_PROD = bool(os.environ.get("RENDER"))          # Render sets RENDER=true
 
-# DATA_DIR holds the database + uploaded photos.
-# On Render, point it at the persistent disk mount path (e.g. /var/data).
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+USE_PG = bool(DATABASE_URL)
+USE_CLOUD = bool(os.environ.get("CLOUDINARY_URL", "").strip())
+
+if USE_CLOUD:
+    import cloudinary
+    import cloudinary.uploader
+    cloudinary.config(secure=True)      # credentials are read from CLOUDINARY_URL
+
+# DATA_DIR is only used in local mode (SQLite file + ./uploads folder).
 DATA_DIR = os.environ.get("DATA_DIR", BASE_DIR)
 DB_PATH = os.path.join(DATA_DIR, "bosaso_realestate.db")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
@@ -37,6 +59,19 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 BRAND_NAME = os.environ.get("BRAND_NAME", "Bosaso Homes")
 ADMIN_WHATSAPP = re.sub(r"\D", "", os.environ.get("ADMIN_WHATSAPP", ""))
+
+
+def _database_uri():
+    url = DATABASE_URL
+    if not url:
+        return "sqlite:///" + DB_PATH
+    # Render / Heroku style URLs -> SQLAlchemy + psycopg 3
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
+
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
@@ -46,80 +81,36 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=IS_PROD,
     PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 30,  # 30 days
+    SQLALCHEMY_DATABASE_URI=_database_uri(),
+    SQLALCHEMY_ENGINE_OPTIONS={"pool_pre_ping": True, "pool_recycle": 280},
+    SQLALCHEMY_TRACK_MODIFICATIONS=False,
 )
 # Render terminates HTTPS in front of us; trust its forwarded headers.
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+db.init_app(app)
+
+
+@event.listens_for(Engine, "connect")
+def _sqlite_foreign_keys(dbapi_conn, _record):
+    if isinstance(dbapi_conn, sqlite3.Connection):
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.close()
+
 
 BOSASO_CENTER = (11.2842, 49.1816)
 LAT_RANGE = (11.0, 11.6)
 LNG_RANGE = (48.9, 49.5)
 
-TYPES = ("Rent", "Sale")
-CATEGORIES = ("House", "Land", "Apartment")
+TYPES = ("Rent", "Sale")                                   # filter name: status
+CATEGORIES = ("House", "Apartment", "Land", "Commercial")  # filter: property_type
 NEIGHBORHOODS = ["Bander Ziada", "Baalade", "Suweyto", "Horseed", "Shabelle",
                  "Waaberi", "Galkacyo Road", "Other"]
-STATUSES = ("pending", "approved", "rejected", "closed")
-
 MAX_IMAGES = 6
 ALLOWED_EXT = {"jpg", "jpeg", "png", "webp"}
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-
-# --------------------------------------------------------------------------
-# Database
-# --------------------------------------------------------------------------
-def get_db():
-    if "db" not in g:
-        g.db = sqlite3.connect(DB_PATH, timeout=10)
-        g.db.row_factory = sqlite3.Row
-        g.db.execute("PRAGMA foreign_keys = ON")
-    return g.db
-
-
-@app.teardown_appcontext
-def close_db(_exc):
-    db = g.pop("db", None)
-    if db is not None:
-        db.close()
-
-
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS users (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    name          TEXT NOT NULL,
-    email         TEXT NOT NULL UNIQUE,
-    phone         TEXT,
-    password_hash TEXT NOT NULL,
-    is_admin      INTEGER NOT NULL DEFAULT 0,
-    created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS properties (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    title           TEXT    NOT NULL,
-    description     TEXT,
-    price           REAL    NOT NULL,
-    type            TEXT    NOT NULL CHECK (type IN ('Rent','Sale')),
-    category        TEXT    NOT NULL CHECK (category IN ('House','Land','Apartment')),
-    neighborhood    TEXT    NOT NULL,
-    latitude        REAL    NOT NULL,
-    longitude       REAL    NOT NULL,
-    whatsapp_number TEXT    NOT NULL,
-    is_verified     INTEGER NOT NULL DEFAULT 0,
-    created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    owner_id        INTEGER,
-    status          TEXT    NOT NULL DEFAULT 'approved'
-                    CHECK (status IN ('pending','approved','rejected','closed'))
-);
-
-CREATE TABLE IF NOT EXISTS property_images (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    property_id INTEGER NOT NULL,
-    image_url   TEXT    NOT NULL,
-    FOREIGN KEY (property_id) REFERENCES properties (id) ON DELETE CASCADE
-);
-"""
-
+# NOTE: coordinates are approximate and the WhatsApp numbers are fake placeholders.
 SAMPLE_PROPERTIES = [
     {
         "title": "Modern 4-Bedroom Villa in Bander Ziada",
@@ -128,7 +119,7 @@ SAMPLE_PROPERTIES = [
                        "the main road and the port.",
         "price": 185000, "type": "Sale", "category": "House",
         "neighborhood": "Bander Ziada", "latitude": 11.2905, "longitude": 49.1960,
-        "whatsapp_number": "252907000001", "is_verified": 1,
+        "whatsapp_number": "252907000001", "is_verified": True,
         "images": ["https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800"],
     },
     {
@@ -137,7 +128,7 @@ SAMPLE_PROPERTIES = [
                        "2 bathrooms and a small yard. Available immediately.",
         "price": 350, "type": "Rent", "category": "House",
         "neighborhood": "Baalade", "latitude": 11.2788, "longitude": 49.1792,
-        "whatsapp_number": "252907000002", "is_verified": 1,
+        "whatsapp_number": "252907000002", "is_verified": True,
         "images": ["https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800"],
     },
     {
@@ -147,7 +138,7 @@ SAMPLE_PROPERTIES = [
                        "home or small apartment block.",
         "price": 42000, "type": "Sale", "category": "Land",
         "neighborhood": "Suweyto", "latitude": 11.2660, "longitude": 49.1715,
-        "whatsapp_number": "252907000003", "is_verified": 0,
+        "whatsapp_number": "252907000003", "is_verified": False,
         "images": ["https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800"],
     },
     {
@@ -157,22 +148,47 @@ SAMPLE_PROPERTIES = [
                        "Perfect for small families or professionals.",
         "price": 280, "type": "Rent", "category": "Apartment",
         "neighborhood": "Bander Ziada", "latitude": 11.2872, "longitude": 49.1858,
-        "whatsapp_number": "252907000004", "is_verified": 1,
+        "whatsapp_number": "252907000004", "is_verified": True,
         "images": ["https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800"],
     },
 ]
 
 
-def _migrate(db):
-    """Upgrade a database created by the first MVP version."""
-    cols = {r[1] for r in db.execute("PRAGMA table_info(properties)")}
-    if "owner_id" not in cols:
-        db.execute("ALTER TABLE properties ADD COLUMN owner_id INTEGER")
-    if "status" not in cols:
-        db.execute("ALTER TABLE properties ADD COLUMN status TEXT NOT NULL DEFAULT 'approved'")
+# --------------------------------------------------------------------------
+# Database bootstrap
+# --------------------------------------------------------------------------
+def _prepare_sqlite_file():
+    """Old local SQLite files carry CHECK constraints that reject the new
+    'Commercial' category. Keep such a file as a backup and start a fresh one."""
+    if USE_PG or not os.path.exists(DB_PATH):
+        return
+    con = sqlite3.connect(DB_PATH)
+    try:
+        row = con.execute("SELECT sql FROM sqlite_master "
+                          "WHERE type='table' AND name='properties'").fetchone()
+    finally:
+        con.close()
+    if row and row[0] and "CHECK" in row[0] and "Commercial" not in row[0]:
+        backup = DB_PATH[:-3] + f".old-{int(time.time())}.db"
+        os.replace(DB_PATH, backup)
+        print(f"[info] Old local database backed up to {os.path.basename(backup)}; "
+              "starting a fresh one.")
 
 
-def _ensure_admin(db):
+def _relax_postgres_checks():
+    """Existing PostgreSQL tables (first versions) only allowed 3 categories."""
+    if not USE_PG:
+        return
+    try:
+        db.session.execute(text(
+            "ALTER TABLE properties DROP CONSTRAINT IF EXISTS properties_category_check"))
+        db.session.commit()
+    except Exception as exc:          # not fatal (e.g. table has no such constraint)
+        db.session.rollback()
+        print("[warn] could not relax category constraint:", exc)
+
+
+def _ensure_admin():
     email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
     password = os.environ.get("ADMIN_PASSWORD", "")
     explicit = bool(password)
@@ -183,41 +199,47 @@ def _ensure_admin(db):
     if not email or not password:
         print("[warn] ADMIN_EMAIL / ADMIN_PASSWORD not set: no admin account created.")
         return
-    row = db.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+    user = db.session.scalar(select(User).where(User.email == email))
     try:
-        if row is None:
-            db.execute(
-                "INSERT INTO users (name, email, password_hash, is_admin) VALUES (?,?,?,1)",
-                ("Admin", email, generate_password_hash(password)))
+        if user is None:
+            db.session.add(User(name="Admin", email=email, is_admin=True,
+                                password_hash=generate_password_hash(password)))
         else:
-            db.execute("UPDATE users SET is_admin = 1 WHERE id = ?", (row[0],))
+            user.is_admin = True
             if explicit:                  # env var is the source of truth
-                db.execute("UPDATE users SET password_hash = ? WHERE id = ?",
-                           (generate_password_hash(password), row[0]))
-    except sqlite3.IntegrityError:
-        pass
+                user.password_hash = generate_password_hash(password)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+
+
+def _seed_samples():
+    if os.environ.get("SEED_SAMPLES", "1") == "0":
+        return
+    if db.session.scalar(select(func.count(Property.id))):
+        return
+    for p in SAMPLE_PROPERTIES:
+        prop = Property(
+            title=p["title"], description=p["description"], price=p["price"],
+            type=p["type"], category=p["category"], neighborhood=p["neighborhood"],
+            latitude=p["latitude"], longitude=p["longitude"],
+            whatsapp_number=p["whatsapp_number"], is_verified=p["is_verified"],
+            status="approved")
+        prop.images = [Image(image_url=u) for u in p["images"]]
+        db.session.add(prop)
+    db.session.commit()
+    print(f"Seeded {len(SAMPLE_PROPERTIES)} sample properties.")
 
 
 def init_db():
-    with sqlite3.connect(DB_PATH, timeout=10) as db:
-        db.executescript(SCHEMA)
-        _migrate(db)
-        _ensure_admin(db)
-        count = db.execute("SELECT COUNT(*) FROM properties").fetchone()[0]
-        if count == 0 and os.environ.get("SEED_SAMPLES", "1") != "0":
-            for p in SAMPLE_PROPERTIES:
-                cur = db.execute(
-                    """INSERT INTO properties
-                       (title, description, price, type, category, neighborhood,
-                        latitude, longitude, whatsapp_number, is_verified, status)
-                       VALUES (?,?,?,?,?,?,?,?,?,?, 'approved')""",
-                    (p["title"], p["description"], p["price"], p["type"],
-                     p["category"], p["neighborhood"], p["latitude"],
-                     p["longitude"], p["whatsapp_number"], p["is_verified"]))
-                for url in p["images"]:
-                    db.execute("INSERT INTO property_images (property_id, image_url) VALUES (?,?)",
-                               (cur.lastrowid, url))
-            print(f"Seeded {len(SAMPLE_PROPERTIES)} sample properties.")
+    _prepare_sqlite_file()
+    with app.app_context():
+        db.create_all()          # creates missing tables only (e.g. favorites)
+        _relax_postgres_checks()
+        _ensure_admin()
+        _seed_samples()
+    print("Database:", "PostgreSQL" if USE_PG else "SQLite",
+          "| Photos:", "Cloudinary" if USE_CLOUD else "local disk")
 
 
 # --------------------------------------------------------------------------
@@ -261,16 +283,16 @@ def inject_globals():
 @app.before_request
 def load_user_and_check_csrf():
     g.user = None
-    if request.endpoint in (None, "static", "uploads"):
+    if request.endpoint in (None, "static", "uploads", "favicon_ico"):
         return
     uid = session.get("user_id")
     if uid:
-        g.user = get_db().execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+        g.user = db.session.get(User, uid)
         if g.user is None:
             session.pop("user_id", None)
     if request.method == "POST":
         token = session.get("_csrf", "")
-        sent = request.form.get("_csrf", "")
+        sent = request.form.get("_csrf") or request.headers.get("X-CSRF-Token", "")
         if not token or not secrets.compare_digest(token, sent):
             abort(400)
 
@@ -283,14 +305,23 @@ def security_headers(resp):
     return resp
 
 
+def login_required(view):
+    @wraps(view)
+    def wrapper(*a, **kw):
+        if g.user is None:
+            flash_t("flash_need_login", "error")
+            return redirect(url_for("login", next=request.path))
+        return view(*a, **kw)
+    return wrapper
+
 
 def admin_required(view):
     @wraps(view)
     def wrapper(*a, **kw):
         if g.user is None:
             return redirect(url_for("login", next=request.path))
-        #if not g.user["is_admin"]:
-           # abort(403)
+        if not g.user.is_admin:
+            abort(403)
         return view(*a, **kw)
     return wrapper
 
@@ -309,10 +340,10 @@ def rate_limited(key, limit=10, window=600):
     return False
 
 
-def safe_next(target):
+def safe_next(target, default=None):
     if target and target.startswith("/") and not target.startswith("//"):
         return target
-    return url_for("dashboard")
+    return default or url_for("dashboard")
 
 
 # --------------------------------------------------------------------------
@@ -325,44 +356,78 @@ def clean_whatsapp(raw):
     return digits
 
 
-def fetch_properties(where="", params=(), order="p.id DESC", limit=None):
-    db = get_db()
-    sql = ("SELECT p.*, u.name AS owner_name, u.email AS owner_email "
-           "FROM properties p LEFT JOIN users u ON u.id = p.owner_id ")
-    if where:
-        sql += "WHERE " + where + " "
-    sql += "ORDER BY " + order
-    if limit:
-        sql += f" LIMIT {int(limit)}"
-    rows = db.execute(sql, params).fetchall()
-    images = {}
-    if rows:
-        ids = [r["id"] for r in rows]
-        marks = ",".join("?" * len(ids))
-        for img in db.execute(
-            f"SELECT id, property_id, image_url FROM property_images "
-            f"WHERE property_id IN ({marks}) ORDER BY id", ids):
-            images.setdefault(img["property_id"], []).append(
-                {"id": img["id"], "url": img["image_url"]})
-    result = []
-    for r in rows:
-        d = dict(r)
-        d["is_verified"] = bool(d["is_verified"])
-        d["image_list"] = images.get(r["id"], [])
-        d["images"] = [i["url"] for i in d["image_list"]]
-        result.append(d)
-    return result
+def favorite_ids_for(user):
+    if user is None:
+        return set()
+    return set(db.session.scalars(
+        select(Favorite.property_id).where(Favorite.user_id == user.id)))
+
+
+def _like(value):
+    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def _number(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def build_property_query(args, only_approved=True):
+    """Search & filter. Supported query parameters:
+
+        location       neighborhood (partial, case-insensitive)   [old: neighborhood]
+        property_type  House | Apartment | Land | Commercial       [old: category]
+        status         Rent | Sale                                 [old: type]
+        min_price, max_price
+        q              free text (title / description / neighborhood)
+    """
+    query = select(Property).options(selectinload(Property.images))
+    if only_approved:
+        query = query.where(Property.status == "approved")
+
+    rent_sale = (args.get("status") or args.get("type") or "").strip()
+    if rent_sale in TYPES:
+        query = query.where(Property.type == rent_sale)
+
+    category = (args.get("property_type") or args.get("category") or "").strip()
+    if category in CATEGORIES:
+        query = query.where(Property.category == category)
+
+    location = (args.get("location") or args.get("neighborhood") or "").strip()
+    if location:
+        query = query.where(Property.neighborhood.ilike(_like(location), escape="\\"))
+
+    low, high = _number(args.get("min_price")), _number(args.get("max_price"))
+    if low is not None:
+        query = query.where(Property.price >= low)
+    if high is not None:
+        query = query.where(Property.price <= high)
+
+    term = (args.get("q") or "").strip()
+    if term:
+        pattern = _like(term[:100])
+        query = query.where(or_(
+            Property.title.ilike(pattern, escape="\\"),
+            Property.description.ilike(pattern, escape="\\"),
+            Property.neighborhood.ilike(pattern, escape="\\")))
+
+    return query.order_by(Property.is_verified.desc(), Property.created_at.desc(),
+                          Property.id.desc())
 
 
 def get_property_or_404(pid):
-    rows = fetch_properties("p.id = ?", (pid,))
-    if not rows:
+    prop = db.session.get(Property, pid)
+    if prop is None:
         abort(404)
-    return rows[0]
+    return prop
 
 
 def can_manage(prop):
-    return g.user is not None and (g.user["is_admin"] or prop["owner_id"] == g.user["id"])
+    return g.user is not None and (g.user.is_admin or prop.owner_id == g.user.id)
 
 
 class ImageError(Exception):
@@ -371,8 +436,20 @@ class ImageError(Exception):
         self.key = key
 
 
+def _store_image(jpeg_bytes):
+    """Save one processed photo and return its public URL."""
+    if USE_CLOUD:
+        res = cloudinary.uploader.upload(io.BytesIO(jpeg_bytes), folder="bosaso-homes",
+                                         resource_type="image")
+        return res["secure_url"]
+    name = uuid.uuid4().hex + ".jpg"
+    with open(os.path.join(UPLOAD_DIR, name), "wb") as fh:
+        fh.write(jpeg_bytes)
+    return "/uploads/" + name
+
+
 def save_images(files):
-    """Validate, resize and store uploads. Returns list of '/uploads/..' URLs."""
+    """Validate, resize and store uploads. Returns list of image URLs."""
     saved = []
     try:
         for f in files:
@@ -380,14 +457,18 @@ def save_images(files):
             if ext not in ALLOWED_EXT:
                 raise ImageError("e_images_type")
             try:
-                img = Image.open(f.stream)
+                img = PILImage.open(f.stream)
                 img = ImageOps.exif_transpose(img).convert("RGB")
             except Exception:
                 raise ImageError("e_images_bad")
             img.thumbnail((1400, 1400))
-            name = uuid.uuid4().hex + ".jpg"
-            img.save(os.path.join(UPLOAD_DIR, name), "JPEG", quality=82, optimize=True)
-            saved.append("/uploads/" + name)
+            buf = io.BytesIO()
+            img.save(buf, "JPEG", quality=82, optimize=True)
+            try:
+                saved.append(_store_image(buf.getvalue()))
+            except Exception as exc:
+                app.logger.error("Photo storage failed: %s", exc)
+                raise ImageError("e_images_upload")
     except ImageError:
         for url in saved:
             remove_upload(url)
@@ -396,11 +477,32 @@ def save_images(files):
 
 
 def remove_upload(url):
-    if url and url.startswith("/uploads/"):
+    """Delete a stored photo (local file or Cloudinary asset). Never raises."""
+    if not url:
+        return
+    if url.startswith("/uploads/"):
         try:
             os.remove(os.path.join(UPLOAD_DIR, os.path.basename(url)))
         except OSError:
             pass
+    elif USE_CLOUD and "res.cloudinary.com" in url:
+        m = re.search(r"/upload/(?:v\d+/)?(.+?)\.[A-Za-z0-9]+$", url)
+        if m:
+            try:
+                cloudinary.uploader.destroy(m.group(1), resource_type="image")
+            except Exception as exc:
+                app.logger.warning("Cloudinary delete failed: %s", exc)
+
+
+def commit_or_cleanup(new_urls=()):
+    """Commit; if it fails, roll back and delete photos we just stored."""
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        for url in new_urls:
+            remove_upload(url)
+        raise
 
 
 def parse_property_form(form, is_admin):
@@ -451,20 +553,26 @@ def parse_property_form(form, is_admin):
         errors.append("e_whatsapp")
     data["whatsapp_number"] = wa
 
-    data["is_verified"] = 1 if (is_admin and form.get("is_verified")) else None
+    data["is_verified"] = bool(is_admin and form.get("is_verified"))
     return data, errors
 
 
 def _form_values(prop):
-    price = prop["price"]
+    price = prop.price
     return {
-        "title": prop["title"], "description": prop["description"] or "",
+        "title": prop.title, "description": prop.description or "",
         "price": int(price) if price == int(price) else price,
-        "type": prop["type"], "category": prop["category"],
-        "neighborhood": prop["neighborhood"], "latitude": prop["latitude"],
-        "longitude": prop["longitude"], "whatsapp_number": prop["whatsapp_number"],
-        "is_verified": "1" if prop["is_verified"] else "",
+        "type": prop.type, "category": prop.category,
+        "neighborhood": prop.neighborhood, "latitude": prop.latitude,
+        "longitude": prop.longitude, "whatsapp_number": prop.whatsapp_number,
+        "is_verified": "1" if prop.is_verified else "",
     }
+
+
+def _apply_form(prop, data):
+    for field in ("title", "description", "price", "type", "category",
+                  "neighborhood", "latitude", "longitude", "whatsapp_number"):
+        setattr(prop, field, data[field])
 
 
 # --------------------------------------------------------------------------
@@ -477,44 +585,20 @@ def index():
 
 @app.route("/api/properties")
 def api_properties():
-    where, params = ["p.status = 'approved'"], []
-    ptype = request.args.get("type", "").strip()
-    if ptype in TYPES:
-        where.append("p.type = ?")
-        params.append(ptype)
-    category = request.args.get("category", "").strip()
-    if category in CATEGORIES:
-        where.append("p.category = ?")
-        params.append(category)
-    area = request.args.get("neighborhood", "").strip()
-    if area:
-        where.append("p.neighborhood = ?")
-        params.append(area)
-    for key, op in (("min_price", ">="), ("max_price", "<=")):
-        raw = request.args.get(key, "").strip()
-        if raw:
-            try:
-                params.append(float(raw))
-                where.append(f"p.price {op} ?")
-            except ValueError:
-                pass
-    rows = fetch_properties(" AND ".join(where), params,
-                            order="p.is_verified DESC, p.created_at DESC, p.id DESC")
-    public = []
-    for d in rows:      # never expose owner e-mail etc. publicly
-        d.pop("owner_email", None)
-        d.pop("owner_name", None)
-        d.pop("image_list", None)
-        public.append(d)
-    return jsonify(public)
+    props = db.session.scalars(build_property_query(request.args)).all()
+    fav_ids = favorite_ids_for(g.user)
+    return jsonify([p.to_dict(fav_ids) for p in props])      # public: no owner data
 
 
 @app.route("/property/<int:pid>")
 def property_detail(pid):
     prop = get_property_or_404(pid)
-    if prop["status"] != "approved" and not can_manage(prop):
+    manageable = can_manage(prop)
+    if prop.status != "approved" and not manageable:
         abort(404)
-    return render_template("property.html", p=prop, manageable=can_manage(prop))
+    return render_template("property.html",
+                           p=prop.to_dict(favorite_ids_for(g.user)),
+                           manageable=manageable)
 
 
 @app.route("/lang/<code>")
@@ -532,6 +616,11 @@ def uploads(filename):
     return send_from_directory(UPLOAD_DIR, filename, max_age=60 * 60 * 24 * 365)
 
 
+@app.route("/favicon.ico")
+def favicon_ico():
+    return redirect(url_for("static", filename="favicon.svg"), code=301)
+
+
 @app.route("/healthz")
 def healthz():
     return "ok"
@@ -540,6 +629,7 @@ def healthz():
 @app.route("/robots.txt")
 def robots():
     body = ("User-agent: *\nDisallow: /admin\nDisallow: /dashboard\nDisallow: /add\n"
+            "Disallow: /my-favorites\n"
             f"Sitemap: {url_for('sitemap', _external=True)}\n")
     return Response(body, mimetype="text/plain")
 
@@ -547,12 +637,62 @@ def robots():
 @app.route("/sitemap.xml")
 def sitemap():
     urls = [url_for("index", _external=True)]
-    for p in fetch_properties("p.status = 'approved'"):
-        urls.append(url_for("property_detail", pid=p["id"], _external=True))
+    ids = db.session.scalars(select(Property.id).where(Property.status == "approved"))
+    urls += [url_for("property_detail", pid=i, _external=True) for i in ids]
     xml = ('<?xml version="1.0" encoding="UTF-8"?>'
            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
            + "".join(f"<url><loc>{u}</loc></url>" for u in urls) + "</urlset>")
     return Response(xml, mimetype="application/xml")
+
+
+# --------------------------------------------------------------------------
+# Favorites (saved properties)
+# --------------------------------------------------------------------------
+@app.route("/favorite/<int:pid>", methods=["POST"])
+def toggle_favorite(pid):
+    wants_json = request.headers.get("X-Requested-With") == "fetch"
+    detail_url = url_for("property_detail", pid=pid)
+    if g.user is None:
+        login_url = url_for("login", next=detail_url)
+        if wants_json:
+            return jsonify(login_url=login_url), 401
+        flash_t("flash_need_login")
+        return redirect(login_url)
+
+    prop = get_property_or_404(pid)
+    if prop.status != "approved" and not can_manage(prop):
+        abort(404)
+
+    fav = db.session.scalar(select(Favorite).where(
+        Favorite.user_id == g.user.id, Favorite.property_id == pid))
+    if fav is None:
+        db.session.add(Favorite(user_id=g.user.id, property_id=pid))
+        favorited = True
+    else:
+        db.session.delete(fav)
+        favorited = False
+    try:
+        db.session.commit()
+    except IntegrityError:            # double click race: row already exists
+        db.session.rollback()
+        favorited = True
+
+    if wants_json:
+        return jsonify(favorited=favorited)
+    return redirect(safe_next(request.form.get("next"), default=detail_url))
+
+
+@app.route("/my-favorites")
+@login_required
+def my_favorites():
+    props = db.session.scalars(
+        select(Property)
+        .join(Favorite, Favorite.property_id == Property.id)
+        .where(Favorite.user_id == g.user.id, Property.status == "approved")
+        .options(selectinload(Property.images))
+        .order_by(Favorite.id.desc())).all()
+    ids = {p.id for p in props}
+    return render_template("favorites.html", props=[p.to_dict(ids) for p in props])
 
 
 # --------------------------------------------------------------------------
@@ -581,19 +721,23 @@ def register():
             errors.append("e_password_short")
         if phone and not 8 <= len(phone) <= 15:
             errors.append("e_whatsapp")
-        db = get_db()
-        if not errors and db.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone():
+        if not errors and db.session.scalar(select(User.id).where(User.email == email)):
             errors.append("e_email_taken")
         if errors:
             for e in errors:
                 flash_t(e)
         else:
-            cur = db.execute(
-                "INSERT INTO users (name, email, phone, password_hash) VALUES (?,?,?,?)",
-                (name, email, phone, generate_password_hash(password)))
-            db.commit()
+            user = User(name=name, email=email, phone=phone,
+                        password_hash=generate_password_hash(password))
+            db.session.add(user)
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                flash_t("e_email_taken")
+                return render_template("register.html", form=form)
             session.clear()
-            session["user_id"] = cur.lastrowid
+            session["user_id"] = user.id
             session.permanent = True
             flash_t("flash_welcome", "success")
             return redirect(safe_next(request.args.get("next")))
@@ -611,10 +755,10 @@ def login():
             flash_t("e_rate")
             return render_template("login.html", form=form), 429
         email = form.get("email", "").strip().lower()
-        user = get_db().execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
-        if user and check_password_hash(user["password_hash"], form.get("password", "")):
+        user = db.session.scalar(select(User).where(User.email == email))
+        if user and check_password_hash(user.password_hash, form.get("password", "")):
             session.clear()
-            session["user_id"] = user["id"]
+            session["user_id"] = user.id
             session.permanent = True
             flash_t("flash_logged_in", "success")
             return redirect(safe_next(request.args.get("next") or form.get("next")))
@@ -633,22 +777,24 @@ def logout():
 # Owner area: dashboard, add, edit, delete, close/reopen
 # --------------------------------------------------------------------------
 @app.route("/dashboard")
-@admin_required
+@login_required
 def dashboard():
-    props = fetch_properties("p.owner_id = ?", (g.user["id"],))
-    return render_template("dashboard.html", props=props)
+    props = db.session.scalars(
+        select(Property).where(Property.owner_id == g.user.id)
+        .options(selectinload(Property.images)).order_by(Property.id.desc())).all()
+    return render_template("dashboard.html", props=[p.to_dict(private=True) for p in props])
 
 
 @app.route("/add", methods=["GET", "POST"])
 @app.route("/add/", methods=["GET", "POST"])
 @app.route("/add-property", methods=["GET", "POST"])
 @app.route("/add_property", methods=["GET", "POST"])
-@admin_required
+@login_required
 def add_property():
-    form = {"whatsapp_number": g.user["phone"] or ""}
+    form = {"whatsapp_number": g.user.phone or ""}
     if request.method == "POST":
         form = request.form.to_dict()
-        is_admin = bool(g.user["is_admin"])
+        is_admin = bool(g.user.is_admin)
         data, errors = parse_property_form(request.form, is_admin)
         files = [f for f in request.files.getlist("images") if f and f.filename]
         if len(files) > MAX_IMAGES:
@@ -663,21 +809,13 @@ def add_property():
             for e in errors:
                 flash_t(e)
         else:
-            status = "approved" if is_admin else "pending"
-            db = get_db()
-            cur = db.execute(
-                """INSERT INTO properties
-                   (title, description, price, type, category, neighborhood,
-                    latitude, longitude, whatsapp_number, is_verified, owner_id, status)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (data["title"], data["description"], data["price"], data["type"],
-                 data["category"], data["neighborhood"], data["latitude"],
-                 data["longitude"], data["whatsapp_number"],
-                 data["is_verified"] or 0, g.user["id"], status))
-            for url in urls:
-                db.execute("INSERT INTO property_images (property_id, image_url) VALUES (?,?)",
-                           (cur.lastrowid, url))
-            db.commit()
+            prop = Property(owner_id=g.user.id,
+                            status="approved" if is_admin else "pending",
+                            is_verified=data["is_verified"])
+            _apply_form(prop, data)
+            prop.images = [Image(image_url=u) for u in urls]
+            db.session.add(prop)
+            commit_or_cleanup(urls)
             flash_t("flash_added" if is_admin else "flash_added_pending", "success")
             return redirect(url_for("dashboard"))
     return render_template("add_property.html", form=form, editing=False,
@@ -685,21 +823,19 @@ def add_property():
 
 
 @app.route("/edit/<int:pid>", methods=["GET", "POST"])
-@admin_required
+@login_required
 def edit_property(pid):
     prop = get_property_or_404(pid)
     if not can_manage(prop):
         abort(403)
-    is_admin = bool(g.user["is_admin"])
+    is_admin = bool(g.user.is_admin)
     form = _form_values(prop)
     if request.method == "POST":
         form = request.form.to_dict()
         data, errors = parse_property_form(request.form, is_admin)
-        existing = {i["id"]: i["url"] for i in prop["image_list"]}
-        to_delete = set()
-        for raw in request.form.getlist("delete_image"):
-            if raw.isdigit() and int(raw) in existing:
-                to_delete.add(int(raw))
+        existing = {img.id: img for img in prop.images}
+        to_delete = {int(raw) for raw in request.form.getlist("delete_image")
+                     if raw.isdigit() and int(raw) in existing}
         files = [f for f in request.files.getlist("images") if f and f.filename]
         if len(existing) - len(to_delete) + len(files) > MAX_IMAGES:
             errors.append("e_images_count")
@@ -713,98 +849,94 @@ def edit_property(pid):
             for e in errors:
                 flash_t(e)
         else:
+            _apply_form(prop, data)
             if is_admin:
-                new_status, verified = prop["status"], (data["is_verified"] or 0)
-            else:
-                # owner edits go back to review (closed listings stay closed)
-                new_status = "closed" if prop["status"] == "closed" else "pending"
-                verified = 0 if new_status == "pending" else int(prop["is_verified"])
-            db = get_db()
-            db.execute(
-                """UPDATE properties SET title=?, description=?, price=?, type=?,
-                   category=?, neighborhood=?, latitude=?, longitude=?,
-                   whatsapp_number=?, is_verified=?, status=? WHERE id=?""",
-                (data["title"], data["description"], data["price"], data["type"],
-                 data["category"], data["neighborhood"], data["latitude"],
-                 data["longitude"], data["whatsapp_number"], verified,
-                 new_status, pid))
+                prop.is_verified = data["is_verified"]
+            elif prop.status != "closed":
+                prop.status = "pending"        # owner edits go back to review
+                prop.is_verified = False
+            removed_urls = []
             for img_id in to_delete:
-                db.execute("DELETE FROM property_images WHERE id = ?", (img_id,))
-                remove_upload(existing[img_id])
+                removed_urls.append(existing[img_id].image_url)
+                prop.images.remove(existing[img_id])   # delete-orphan removes the row
             for url in urls:
-                db.execute("INSERT INTO property_images (property_id, image_url) VALUES (?,?)",
-                           (pid, url))
-            db.commit()
+                prop.images.append(Image(image_url=url))
+            commit_or_cleanup(urls)
+            for url in removed_urls:
+                remove_upload(url)
             flash_t("flash_updated", "success")
-            return redirect(url_for("dashboard") if not is_admin else url_for("admin"))
+            return redirect(url_for("admin") if is_admin else url_for("dashboard"))
+    gallery = [{"id": img.id, "url": img.image_url} for img in prop.images]
     return render_template("add_property.html", form=form, editing=True,
-                           images=prop["image_list"], pid=pid)
+                           images=gallery, pid=pid)
 
 
 @app.route("/delete/<int:pid>", methods=["POST"])
-@admin_required
+@login_required
 def delete_property(pid):
     prop = get_property_or_404(pid)
     if not can_manage(prop):
         abort(403)
-    db = get_db()
-    db.execute("DELETE FROM property_images WHERE property_id = ?", (pid,))
-    db.execute("DELETE FROM properties WHERE id = ?", (pid,))
-    db.commit()
-    for url in prop["images"]:
+    urls = [img.image_url for img in prop.images]
+    db.session.delete(prop)                      # cascades images + favorites
+    db.session.commit()
+    for url in urls:
         remove_upload(url)
     flash_t("flash_deleted", "success")
-    return redirect(request.form.get("back") if request.form.get("back") in
-                    (url_for("admin"), url_for("dashboard")) else url_for("dashboard"))
+    back = request.form.get("back")
+    return redirect(back if back in (url_for("admin"), url_for("dashboard"))
+                    else url_for("dashboard"))
 
 
 @app.route("/status/<int:pid>", methods=["POST"])
-@admin_required
+@login_required
 def change_status(pid):
     prop = get_property_or_404(pid)
     if not can_manage(prop):
         abort(403)
     action = request.form.get("action")
-    db = get_db()
-    if action == "close" and prop["status"] == "approved":
-        db.execute("UPDATE properties SET status='closed' WHERE id=?", (pid,))
-    elif action == "reopen" and prop["status"] == "closed":
-        db.execute("UPDATE properties SET status='approved' WHERE id=?", (pid,))
+    if action == "close" and prop.status == "approved":
+        prop.status = "closed"
+    elif action == "reopen" and prop.status == "closed":
+        prop.status = "approved"
     else:
         abort(400)
-    db.commit()
+    db.session.commit()
     flash_t("flash_status", "success")
     return redirect(url_for("dashboard"))
 
 
 # --------------------------------------------------------------------------
-# Admin
+# Admin (approve / reject / verified toggle)
 # --------------------------------------------------------------------------
 @app.route("/admin")
 @admin_required
 def admin():
-    props = fetch_properties(order="CASE p.status WHEN 'pending' THEN 0 ELSE 1 END, p.id DESC")
-    pending = [p for p in props if p["status"] == "pending"]
-    return render_template("admin.html", props=props, pending=pending)
+    props = db.session.scalars(
+        select(Property)
+        .options(selectinload(Property.images), selectinload(Property.owner))
+        .order_by(case((Property.status == "pending", 0), else_=1), Property.id.desc())).all()
+    rows = [p.to_dict(private=True) for p in props]
+    return render_template("admin.html", props=rows,
+                           pending=[r for r in rows if r["status"] == "pending"])
 
 
 @app.route("/admin/action/<int:pid>", methods=["POST"])
 @admin_required
 def admin_action(pid):
-    get_property_or_404(pid)
+    prop = get_property_or_404(pid)
     action = request.form.get("action")
-    db = get_db()
     if action == "approve":
-        db.execute("UPDATE properties SET status='approved' WHERE id=?", (pid,))
+        prop.status = "approved"
     elif action == "reject":
-        db.execute("UPDATE properties SET status='rejected' WHERE id=?", (pid,))
+        prop.status = "rejected"
     elif action == "verify":
-        db.execute("UPDATE properties SET is_verified=1 WHERE id=?", (pid,))
+        prop.is_verified = True
     elif action == "unverify":
-        db.execute("UPDATE properties SET is_verified=0 WHERE id=?", (pid,))
+        prop.is_verified = False
     else:
         abort(400)
-    db.commit()
+    db.session.commit()
     flash_t("flash_status", "success")
     return redirect(url_for("admin"))
 
