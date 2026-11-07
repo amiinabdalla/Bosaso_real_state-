@@ -189,9 +189,9 @@ def _relax_postgres_checks():
 
 
 def _ensure_admin():
-  email = "AmiinAdminBosaso.local@gmail.com"  # <--- Halkan geli email-kaaga admin-ka
+email = "AmiinAdminBosaso.local@gmail.com"  # <--- Halkan geli email-kaaga admin-ka
 password = "amiinhomelocal1234"     # <--- Halkan geli password-kaaga
-    explicit = bool(password)
+explicit = bool(password)
     if not IS_PROD and not password:      # local development convenience only
         email = email or "AmiinAdminBosaso.local@gmail.com"
         password = "amiinhomelocal1234"
