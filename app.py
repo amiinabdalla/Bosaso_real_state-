@@ -189,8 +189,8 @@ def _relax_postgres_checks():
 
 
 def _ensure_admin():
-    email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
-    password = os.environ.get("ADMIN_PASSWORD", "")
+  email = "AmiinAdminBosaso.local@gmail.com"  # <--- Halkan geli email-kaaga admin-ka
+password = "amiinhomelocal1234"     # <--- Halkan geli password-kaaga
     explicit = bool(password)
     if not IS_PROD and not password:      # local development convenience only
         email = email or "admin@bosaso.local"
@@ -310,7 +310,7 @@ def login_required(view):
     def wrapper(*a, **kw):
         if g.user is None:
             flash_t("flash_need_login", "error")
-            return redirect(url_for("login", next=request.path))
+            return redirect(url_for("login", next=request.path))A
         return view(*a, **kw)
     return wrapper
 
