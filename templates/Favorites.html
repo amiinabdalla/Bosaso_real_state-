@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_macros.html" import heart %}
+{% block title %}{{ t('fav_title') }} – {{ brand }}{% endblock %}
+{% block content %}
+<main class="max-w-5xl mx-auto px-4 py-6">
+  <h1 class="text-xl font-bold mb-4">❤ {{ t('fav_title') }}</h1>
+
+  {% if not props %}
+    <div class="bg-white rounded-xl shadow p-8 text-center text-slate-500">
+      <p>{{ t('fav_empty') }}</p>
+      <a href="{{ url_for('index') }}" class="inline-block mt-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-lg text-sm">{{ t('fav_browse') }}</a>
+    </div>
+  {% else %}
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    {% for p in props %}
+    {% set wa_text = t('wa_message', id=p.id, brand=brand) %}
+    <article data-card class="bg-white rounded-xl shadow overflow-hidden flex flex-col">
+      <div class="relative">
+        <a href="{{ url_for('property_detail', pid=p.id) }}">
+          {% if p.images %}
+            <img src="{{ p.images[0] }}" alt="{{ p.title }}" loading="lazy" class="w-full h-44 object-cover bg-blue-50">
+          {% else %}
+            <div class="w-full h-44 bg-blue-50 flex items-center justify-center text-5xl text-blue-300">🏠</div>
+          {% endif %}
+        </a>
+        <div class="absolute top-2 left-2 flex gap-1">
+          <span class="bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded">{{ t('type_' ~ p.type) }}</span>
+          <span class="bg-white/90 text-slate-700 text-xs font-semibold px-2 py-1 rounded">{{ t('cat_' ~ p.category) }}</span>
+        </div>
+        {{ heart(p.id, true, 'absolute top-2 right-2', t('fav_remove'), true) }}
+      </div>
+      <div class="p-4 flex-1 flex flex-col">
+        <div class="flex items-start justify-between gap-2">
+          <a href="{{ url_for('property_detail', pid=p.id) }}" class="font-semibold leading-snug hover:underline">{{ p.title }}</a>
+          {% if p.is_verified %}<span class="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap">{{ t('verified') }} 🛡️</span>{% endif %}
+        </div>
+        <p class="text-blue-700 font-bold text-lg mt-1">${{ '{:,.0f}'.format(p.price) }}{% if p.type == 'Rent' %} {{ t('per_month') }}{% endif %}</p>
+        <p class="text-sm text-slate-500">📍 {{ p.neighborhood }} · ID #{{ p.id }}</p>
+        <div class="mt-auto pt-3">
+          <a href="https://wa.me/{{ p.whatsapp_number }}?text={{ wa_text|urlencode }}" target="_blank" rel="noopener"
+             class="flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg px-4 py-2.5 text-sm">💬 {{ t('contact_wa') }}</a>
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+</main>
+{% endblock %}
