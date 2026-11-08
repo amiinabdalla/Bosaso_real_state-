@@ -63,6 +63,8 @@ class Property(db.Model):
     type = db.Column(db.String(10), nullable=False)
     # "House" | "Apartment" | "Land" | "Commercial"   (filter: `property_type`)
     category = db.Column(db.String(20), nullable=False)
+    # City / town in Puntland (e.g. Bosaso, Garowe, Galkayo). Existing rows default to Bosaso.
+    city = db.Column(db.String(40), nullable=False, default="Bosaso", server_default="Bosaso")
     neighborhood = db.Column(db.String(60), nullable=False)   # filter: `location`
     latitude = db.Column(db.Float, nullable=False)
     longitude = db.Column(db.Float, nullable=False)
@@ -94,6 +96,7 @@ class Property(db.Model):
             "price": self.price,
             "type": self.type,
             "category": self.category,
+            "city": self.city,
             "neighborhood": self.neighborhood,
             "latitude": self.latitude,
             "longitude": self.longitude,
