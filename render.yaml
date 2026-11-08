@@ -1,30 +1,34 @@
-# Render Blueprint - New > Blueprint > pick your GitHub repo.
-# NOTE: a persistent disk needs a PAID instance (Starter). Free web services
-# cannot attach disks, so the database and photos would be wiped on redeploy.
+# Render Blueprint (optional - you can also set these in the Render dashboard).
+# Data now lives OUTSIDE the web service:
+#   * PostgreSQL  -> DATABASE_URL   (users + listings)
+#   * Cloudinary  -> CLOUDINARY_URL (photos)
+# so no persistent disk is needed and nothing is lost when the service restarts.
 services:
   - type: web
     name: bosaso-homes
     runtime: python
-    plan: starter
+    plan: free            # change to "starter" to remove the ~50s cold start
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --workers 1 --threads 4 --timeout 60
     healthCheckPath: /healthz
     envVars:
       - key: SECRET_KEY
         generateValue: true
-      - key: ADMIN_EMAIL          # you type this in the Render dashboard
+      - key: DATABASE_URL         # paste your PostgreSQL connection string
         sync: false
-      - key: ADMIN_PASSWORD       # you type this in the Render dashboard
+      - key: CLOUDINARY_URL       # cloudinary://API_KEY:API_SECRET@CLOUD_NAME
         sync: false
-      - key: ADMIN_WHATSAPP       # optional: 2529... number for "Report listing"
+      - key: ADMIN_EMAIL
         sync: false
-      - key: DATA_DIR
-        value: /var/data
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: GOOGLE_EMBED_API_KEY # optional: free Google Maps tab on listing pages (key needs billing enabled)
+        sync: false
+      - key: GOOGLE_MAPS_API_KEY  # optional: adds Google Maps layers (needs billing)
+        sync: false
+      - key: ADMIN_WHATSAPP       # optional: office number (2529...)
+        sync: false
       - key: SEED_SAMPLES         # 0 = start with an empty marketplace
         value: "0"
       - key: BRAND_NAME
-        value: Bosaso Homes
-    disk:
-      name: bosaso-data
-      mountPath: /var/data
-      sizeGB: 1
+        value: Puntland Homes
