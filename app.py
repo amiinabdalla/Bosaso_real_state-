@@ -310,7 +310,7 @@ def login_required(view):
     def wrapper(*a, **kw):
         if g.user is None:
             flash_t("flash_need_login", "error")
-            return redirect(url_for("login", next=request.path))A
+            return redirect(url_for("login", next=request.path))
         return view(*a, **kw)
     return wrapper
 
