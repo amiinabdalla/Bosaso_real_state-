@@ -4,13 +4,15 @@
 {% set price_text = '$' ~ '{:,.0f}'.format(p.price) ~ ((' ' ~ t('per_month')) if p.type == 'Rent' else '') %}
 
 {% block title %}{{ p.title }} – {{ brand }}{% endblock %}
-{% block meta_desc %}{{ price_text }} · {{ p.neighborhood }}, Bosaso · {{ (p.description or '')[:140] }}{% endblock %}
+{% block meta_desc %}{{ price_text }} · {{ p.neighborhood }}, {{ p.city }} · {{ (p.description or '')[:140] }}{% endblock %}
 {% block og_image %}{% if p.images and p.images[0].startswith('/') %}{{ request.host_url.rstrip('/') ~ p.images[0] }}{% elif p.images %}{{ p.images[0] }}{% else %}{{ url_for('static', filename='logo.png', _external=True) }}{% endif %}{% endblock %}
 
 {% block head %}
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <style>.leaflet-div-icon.pin{background:none;border:none}</style>
+  {% include "_map_head.html" %}
+  <style>
+    .maptab { background:#f1f5f9; color:#334155; font-weight:600; }
+    .maptab[aria-selected="true"] { background:#2563eb; color:#fff; }
+  </style>
 {% endblock %}
 
 {% block content %}
@@ -79,8 +81,31 @@
       </div>
 
       <div class="bg-white rounded-xl shadow overflow-hidden mt-4">
-        <div class="p-4 font-semibold">{{ t('location') }} · 📍 {{ p.neighborhood }}</div>
+        <div class="p-4 flex flex-wrap items-center justify-between gap-2">
+          <span class="font-semibold">{{ t('location') }} · 📍 {{ p.neighborhood }}, {{ p.city }}</span>
+          <!-- Official Google Maps URLs: free, no API key needed -->
+          <span class="flex flex-wrap gap-2 text-sm">
+            <a href="https://www.google.com/maps/search/?api=1&amp;query={{ p.latitude }},{{ p.longitude }}" target="_blank" rel="noopener"
+               class="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50">{{ t('gmaps_open') }} ↗</a>
+            <a href="https://www.google.com/maps/dir/?api=1&amp;destination={{ p.latitude }},{{ p.longitude }}" target="_blank" rel="noopener"
+               class="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50">{{ t('gmaps_directions') }} ↗</a>
+          </span>
+        </div>
+
+        {% if google_embed_key %}
+        <div class="px-4 pb-3 flex gap-2 text-sm" role="tablist">
+          <button type="button" id="tabOurs" role="tab" aria-selected="true" class="maptab px-3 py-1.5 rounded-lg">{{ t('map_tab_ours') }}</button>
+          <button type="button" id="tabGoogle" role="tab" aria-selected="false" class="maptab px-3 py-1.5 rounded-lg">{{ t('map_tab_google') }}</button>
+        </div>
+        {% endif %}
+
         <div id="map" class="h-72"></div>
+
+        {% if google_embed_key %}
+        <!-- Google Maps Embed API (free, unlimited; needs a key). 'place' mode takes a plus code. -->
+        <iframe id="gframe" class="hidden w-full h-72 border-0" title="Google Maps" referrerpolicy="no-referrer-when-downgrade" allowfullscreen
+                data-src="https://www.google.com/maps/embed/v1/place?key={{ google_embed_key }}&amp;q={{ plus_code|urlencode }}&amp;zoom=17&amp;language={{ lang }}"></iframe>
+        {% endif %}
       </div>
     </section>
 
@@ -96,7 +121,7 @@
         </div>
         <h1 class="text-xl font-bold leading-snug">{{ p.title }}</h1>
         <p class="text-2xl font-extrabold text-blue-700 mt-2">{{ price_text }}</p>
-        <p class="text-sm text-slate-500 mt-1">📍 {{ p.neighborhood }}, Bosaso · ID #{{ p.id }}</p>
+        <p class="text-sm text-slate-500 mt-1">📍 {{ p.neighborhood }}, {{ p.city }} · ID #{{ p.id }}</p>
 
         <!-- Dynamic WhatsApp: property ID is inside the pre-filled text -->
         <a href="https://wa.me/{{ p.whatsapp_number }}?text={{ wa_text|urlencode }}" target="_blank" rel="noopener"
@@ -175,9 +200,7 @@
   // ---- Location map ----
   const pos = [{{ p.latitude }}, {{ p.longitude }}];
   const map = L.map('map', { scrollWheelZoom: false }).setView(pos, 16);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
-  }).addTo(map);
+  addBaseLayers(map);
   L.marker(pos, { icon: L.divIcon({
     className: 'pin', iconSize: [34, 44], iconAnchor: [17, 44],
     html: '<svg xmlns="http://www.w3.org/2000/svg" width="34" height="44" viewBox="0 0 34 44">' +
@@ -185,6 +208,25 @@
           '<polygon points="17,8 26,16 8,16" fill="#fff"/><rect x="11.5" y="16" width="11" height="8" fill="#fff"/>' +
           '<rect x="15.5" y="19" width="3" height="5" fill="#1d4ed8"/></svg>'
   })}).addTo(map);
+
+  // ---- Our map / Google Maps tabs (only when GOOGLE_EMBED_API_KEY is set) ----
+  (function () {
+    const tabGoogle = document.getElementById('tabGoogle');
+    if (!tabGoogle) return;
+    const tabOurs = document.getElementById('tabOurs');
+    const mapEl = document.getElementById('map');
+    const gframe = document.getElementById('gframe');
+    function show(google) {
+      mapEl.classList.toggle('hidden', google);
+      gframe.classList.toggle('hidden', !google);
+      tabGoogle.setAttribute('aria-selected', google ? 'true' : 'false');
+      tabOurs.setAttribute('aria-selected', google ? 'false' : 'true');
+      if (google && !gframe.getAttribute('src')) gframe.setAttribute('src', gframe.dataset.src);   // load on first use
+      if (!google) map.invalidateSize();
+    }
+    tabOurs.addEventListener('click', () => show(false));
+    tabGoogle.addEventListener('click', () => show(true));
+  })();
 
   document.getElementById('shareBtn').addEventListener('click', async () => {
     const data = { title: document.title, url: location.href };
