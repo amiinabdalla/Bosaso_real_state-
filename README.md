@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="static/logo.png" alt="Bosaso Homes logo" width="120">
+  <img src="static/logo.png" alt="Puntland Homes logo" width="120">
 </p>
 
-<h1 align="center">Bosaso Homes</h1>
+<h1 align="center">Puntland Homes</h1>
 
 <p align="center">
-  <b>A real estate &amp; land marketplace for Bosaso, Somalia.</b><br>
-  Find verified houses, apartments, land and shops for rent or sale on an interactive map, then contact the owner directly on WhatsApp.
+  <b>A real estate &amp; land marketplace for Puntland, Somalia.</b><br>
+  Find verified houses, apartments, land and shops for rent or sale in Bosaso, Garowe, Galkayo and other Puntland towns on an interactive map, then contact the owner directly on WhatsApp.
 </p>
 
 <p align="center">
@@ -32,15 +32,15 @@
 
 ## Why this project exists
 
-Finding a home or a plot of land in Bosaso usually means asking around, scrolling through unverified social-media posts, or relying on word of mouth. Buyers and tenants (including people living in the diaspora, for example in the UK) have no single place to see **what is available, where it is, and whether it can be trusted**.
+Finding a home or a plot of land in Puntland usually means asking around, scrolling through unverified social-media posts, or relying on word of mouth. Buyers and tenants (including people living in the diaspora, for example in the UK) have no single place to see **what is available, where it is, and whether it can be trusted**.
 
-Bosaso Homes puts every listing on a map, lets an admin **review and verify** listings before they go public, and sends the visitor straight to the owner on **WhatsApp**, the tool people in the region already use every day. The website itself does not handle money.
+Puntland Homes puts every listing on a map, lets an admin **review and verify** listings before they go public, and sends the visitor straight to the owner on **WhatsApp**, the tool people in the region already use every day. The website itself does not handle money.
 
 ## Features
 
 **For visitors (no account needed)**
-- Interactive map of Bosaso (Leaflet + OpenStreetMap) with a pin for every listing
-- Search and filters: free text, location (neighborhood), property type, rent/sale, and price range. Results update as you type and the URL is shareable
+- Interactive map of Puntland with a pin for every listing, and a **base-map switcher**: street map, satellite, satellite with place names (and optionally Google Maps)
+- Search and filters: free text, **city** (Bosaso, Garowe, Galkayo, Qardho, ...), neighborhood, property type, rent/sale, and price range. Results update as you type and the URL is shareable
 - Listing page with a photo carousel (arrows, dots, thumbnails, swipe, keyboard), description, map and price
 - One-tap **WhatsApp** button with a pre-filled message that contains the property ID
 - **Verified 🛡️** badge on listings that the admin has checked
@@ -102,7 +102,7 @@ Uploaded images are validated (JPG, PNG or WebP only), corrected for phone rotat
 | Backend | Python, Flask, Flask-SQLAlchemy (SQLAlchemy 2) |
 | Database | PostgreSQL in production, SQLite for local development |
 | Frontend | Jinja2 templates, Tailwind CSS (CDN), vanilla JavaScript |
-| Maps | Leaflet.js + OpenStreetMap tiles (free, no API key) |
+| Maps | Leaflet.js with OpenStreetMap + Esri satellite tiles (free, no API key); optional Google Maps layers |
 | Photos | Pillow for processing, Cloudinary for storage |
 | Server | Gunicorn on Render |
 
@@ -117,9 +117,11 @@ bosaso-homes/
 ├── render.yaml            # optional Render blueprint
 ├── static/
 │   ├── favorites.js       # heart / save buttons
+│   ├── maplayers.js       # street / satellite / (Google) base-map switcher
 │   └── logo*.svg|png, favicon.svg
 └── templates/
     ├── base.html          # layout, navigation, language switch
+    ├── _map_head.html     # Leaflet (+ optional Google Maps) includes
     ├── index.html         # search + map + results
     ├── property.html      # listing page with carousel
     ├── favorites.html     # saved listings
@@ -153,6 +155,7 @@ erDiagram
         float price
         string type "Rent or Sale"
         string category "House, Apartment, Land, Commercial"
+        string city "Bosaso, Garowe, Galkayo, ..."
         string neighborhood
         float latitude
         float longitude
@@ -182,12 +185,33 @@ Used by the home page (they appear in the address bar) and by `GET /api/properti
 | Parameter | Meaning | Example |
 |---|---|---|
 | `q` | Free text in title, description and neighborhood | `villa` |
+| `city` | One of the supported cities | `Garowe` |
 | `location` | Neighborhood, partial and case-insensitive | `baal` matches *Baalade* |
 | `property_type` | `House`, `Apartment`, `Land` or `Commercial` | `Land` |
 | `status` | `Rent` or `Sale` | `Rent` |
 | `min_price`, `max_price` | Price range in USD | `300`, `400` |
 
-Example: `/?location=baalade&property_type=House&status=Rent&max_price=400`
+Example: `/?city=Bosaso&location=baalade&property_type=House&status=Rent&max_price=400`
+
+## Cities and maps
+
+**Cities.** The supported towns live in one place, the `CITIES` dictionary in `app.py` (name → approximate centre). Adding a town is one line; the filters, the add-listing form and the map pick it up automatically. When someone adds a listing the pin must be inside Puntland and within 100 km of the chosen city (or choose *Other*), which catches wrong-city mistakes. Neighborhood suggestions per city live in `NEIGHBORHOODS_BY_CITY`; free text is always allowed.
+
+**Base maps.** Every map has a layer switcher:
+
+| Layer | Source | Needs a key? |
+|---|---|---|
+| Street map | OpenStreetMap | No |
+| Satellite + names | Esri World Imagery + reference labels | No |
+| Satellite | Esri World Imagery | No |
+| Google Maps / Google Satellite | Google Maps Platform | **Yes** (optional) |
+
+Notes:
+- OpenStreetMap coverage in some Puntland towns is thinner than in big cities; the satellite layers help, and improving OSM (for example with the Humanitarian OpenStreetMap Team) improves every OSM-based site.
+- The public OpenStreetMap tile servers are a donation-funded service with a [usage policy](https://operations.osmfoundation.org/policies/tiles/); for heavy traffic use a tile provider. Esri imagery has its own [terms](https://www.esri.com/en-us/legal/terms) (keep the attribution visible). Check both before commercial use at scale.
+- **Google Maps links (always on, free, no key).** Every listing page has *Open in Google Maps* and *Directions* buttons that use Google's official Maps URLs.
+- **Google Maps tab on listing pages (optional, free).** The Maps Embed API is free with no usage cap, but Google still requires an API key from a billing-enabled Google Cloud project (a payment method on file). Set `GOOGLE_EMBED_API_KEY` and a *Google Maps* tab appears next to the built-in map. Create a **separate key restricted to the Maps Embed API and to your website's domain**, so it cannot be used for billed APIs. Embed shows a single place, so it is used on listing pages only, not on the main multi-listing map.
+- **Google Maps layers on the main map (optional, billed).** Set `GOOGLE_MAPS_API_KEY` and two extra layers appear (Google becomes the default). Google requires a billing-enabled Google Cloud project even for its free monthly allowance, so restrict the key to your website's domain and set a usage quota. Check Google's current pricing before enabling it. If the key is invalid, the map falls back to the free street map.
 
 ## Quick start (local)
 
@@ -223,7 +247,9 @@ All settings are environment variables.
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Yes | Admin account, created or updated at startup |
 | `SEED_SAMPLES` | Recommended `0` | `0` starts with an empty marketplace |
 | `ADMIN_WHATSAPP` | No | Office number (for example `252907123456`) for an extra "Ask the office" button and the "Report listing" link |
-| `BRAND_NAME` | No | Site name, default `Bosaso Homes` |
+| `BRAND_NAME` | No | Site name, default `Puntland Homes` |
+| `GOOGLE_EMBED_API_KEY` | No | Adds a **Google Maps tab** on each listing page using the free Maps Embed API (see below) |
+| `GOOGLE_MAPS_API_KEY` | No | Adds interactive Google Maps layers to the main map switcher (billed API, see below) |
 
 ## Deploying to Render
 
@@ -280,10 +306,10 @@ Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributor
 
 ## Soomaali (Af-Soomaali)
 
-**Bosaso Homes** waa website lagu raadiyo guryo, dhul, apartment-yo iyo dukaamo **kiro ama iib ah** oo ku yaal **Boosaaso, Soomaaliya**.
+**Puntland Homes** waa website lagu raadiyo guryo, dhul, apartment-yo iyo dukaamo **kiro ama iib ah** oo ku yaal **Puntland, Soomaaliya** (Boosaaso, Garoowe, Galkacyo, Qardho iyo magaalooyin kale).
 
 ### Sidee u shaqeeyaa?
-1. **Booqdaha** wuxuu furaa website-ka oo arkaa khariidad Boosaaso ah oo calaamad (pin) ka muuqato guri kasta iyo dhul kasta. Wuxuu ku raadin karaa **goobta (xaafadda)**, nooca (guri, dhul, apartment, ganacsi), kiro/iib, iyo qiimaha.
+1. **Booqdaha** wuxuu furaa website-ka oo arkaa khariidad Puntland ah oo calaamad (pin) ka muuqato guri kasta iyo dhul kasta (wuxuu u beddeli karaa khariidadda **satellite**). Wuxuu ku raadin karaa **magaalada**, **xaafadda**, nooca (guri, dhul, apartment, ganacsi), kiro/iib, iyo qiimaha.
 2. Marka uu furo liis, wuxuu arkaa sawirro badan (carousel), faahfaahin iyo goobta khariidadda.
 3. Wuxuu riixaa **WhatsApp**, fariin diyaar ah oo ay ku jirto **ID-ga guriga** ayaa toos ugu furmaysa mulkiilaha. Website-ku lacag ma qaato.
 4. **Mulkiilaha** wuxuu samaystaa akoon bilaash ah, wuxuu geliyaa liis (ilaa 6 sawir iyo goobta khariidadda), wuuna maamuli karaa ("la kiraystay/la iibiyay").
