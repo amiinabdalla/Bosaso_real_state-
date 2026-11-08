@@ -35,7 +35,7 @@
           {% if p.is_verified %}<span class="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap">{{ t('verified') }} 🛡️</span>{% endif %}
         </div>
         <p class="text-blue-700 font-bold text-lg mt-1">${{ '{:,.0f}'.format(p.price) }}{% if p.type == 'Rent' %} {{ t('per_month') }}{% endif %}</p>
-        <p class="text-sm text-slate-500">📍 {{ p.neighborhood }} · ID #{{ p.id }}</p>
+        <p class="text-sm text-slate-500">📍 {{ p.neighborhood }}, {{ p.city }} · ID #{{ p.id }}</p>
         <div class="mt-auto pt-3">
           <a href="https://wa.me/{{ p.whatsapp_number }}?text={{ wa_text|urlencode }}" target="_blank" rel="noopener"
              class="flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg px-4 py-2.5 text-sm">💬 {{ t('contact_wa') }}</a>
