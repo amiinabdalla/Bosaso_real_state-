@@ -1,5 +1,5 @@
 """
-Bosaso Homes - Real Estate & Land Marketplace (Flask + SQLAlchemy)
+Puntland Homes - Real Estate & Land Marketplace (Flask + SQLAlchemy)
 
 Local:   python app.py                 -> http://127.0.0.1:5000
 Render:  gunicorn app:app --workers 1 --threads 4   (see render.yaml)
@@ -26,7 +26,7 @@ from flask import (Flask, Response, abort, flash, g, jsonify, redirect,
                    url_for)
 from PIL import Image as PILImage
 from PIL import ImageOps
-from sqlalchemy import case, event, func, or_, select, text
+from sqlalchemy import case, event, func, inspect, or_, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
@@ -57,7 +57,13 @@ DB_PATH = os.path.join(DATA_DIR, "bosaso_realestate.db")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-BRAND_NAME = os.environ.get("BRAND_NAME", "Bosaso Homes")
+BRAND_NAME = os.environ.get("BRAND_NAME", "Puntland Homes")
+# Optional: official Google Maps layers (needs a billing-enabled key, see README)
+GOOGLE_MAPS_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
+# Optional: Google "Maps Embed API" key for the Google Maps tab on listing pages.
+# The Embed API is free with no usage cap, but Google still requires a key from a
+# billing-enabled Cloud project. Restrict the key to the Maps Embed API + your domain.
+GOOGLE_EMBED_KEY = os.environ.get("GOOGLE_EMBED_API_KEY", "").strip()
 ADMIN_WHATSAPP = re.sub(r"\D", "", os.environ.get("ADMIN_WHATSAPP", ""))
 
 
@@ -98,14 +104,36 @@ def _sqlite_foreign_keys(dbapi_conn, _record):
         cur.close()
 
 
-BOSASO_CENTER = (11.2842, 49.1816)
-LAT_RANGE = (11.0, 11.6)
-LNG_RANGE = (48.9, 49.5)
+PUNTLAND_CENTER = (8.9, 48.9)
+PUNTLAND_ZOOM = 7
+# Sanity box so a pin can never land on the other side of the world.
+LAT_RANGE = (6.0, 12.2)
+LNG_RANGE = (46.5, 51.5)
+
+# Cities / towns with approximate centres (lat, lng). To add a town, add one line:
+# the filters, the add-listing form and the map pick it up automatically.
+CITIES = {
+    "Bosaso": (11.2842, 49.1816),
+    "Garowe": (8.4054, 48.4845),
+    "Galkayo": (6.7697, 47.4308),
+    "Qardho": (9.5000, 49.0833),
+    "Burtinle": (8.1667, 48.2833),
+    "Eyl": (7.9803, 49.8164),
+    "Iskushuban": (10.2833, 50.2333),
+    "Bandarbeyla": (9.4833, 50.8000),
+    "Caluula": (11.9667, 50.7500),
+    "Other": None,            # any pin inside the Puntland box above
+}
+MAX_CITY_DISTANCE_KM = 100    # a pin must be within this distance of its city centre
+
+# Neighbourhood suggestions (free text is always allowed). Add other cities when known.
+NEIGHBORHOODS_BY_CITY = {
+    "Bosaso": ["Bander Ziada", "Baalade", "Suweyto", "Horseed", "Shabelle",
+               "Waaberi", "Galkacyo Road"],
+}
 
 TYPES = ("Rent", "Sale")                                   # filter name: status
 CATEGORIES = ("House", "Apartment", "Land", "Commercial")  # filter: property_type
-NEIGHBORHOODS = ["Bander Ziada", "Baalade", "Suweyto", "Horseed", "Shabelle",
-                 "Waaberi", "Galkacyo Road", "Other"]
 MAX_IMAGES = 6
 ALLOWED_EXT = {"jpg", "jpeg", "png", "webp"}
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -151,6 +179,26 @@ SAMPLE_PROPERTIES = [
         "whatsapp_number": "252907000004", "is_verified": True,
         "images": ["https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800"],
     },
+    {
+        "title": "Family House for Rent in Garowe",
+        "description": "Bright 3-bedroom house in a quiet area of Garowe with a "
+                       "walled yard, water tank and parking space.",
+        "city": "Garowe", "neighborhood": "Central Garowe",
+        "price": 400, "type": "Rent", "category": "House",
+        "latitude": 8.4062, "longitude": 48.4831,
+        "whatsapp_number": "252907000005", "is_verified": False,
+        "images": ["https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=800"],
+    },
+    {
+        "title": "Shop Space on the Main Road in Galkayo",
+        "description": "Ground-floor commercial space with a wide frontage on a "
+                       "busy road. Suitable for a shop, pharmacy or office.",
+        "city": "Galkayo", "neighborhood": "Central Galkayo",
+        "price": 650, "type": "Rent", "category": "Commercial",
+        "latitude": 6.7712, "longitude": 47.4296,
+        "whatsapp_number": "252907000006", "is_verified": False,
+        "images": ["https://images.unsplash.com/photo-1604719312566-8912e9227c6a?w=800"],
+    },
 ]
 
 
@@ -188,14 +236,24 @@ def _relax_postgres_checks():
         print("[warn] could not relax category constraint:", exc)
 
 
+def _ensure_columns():
+    """Add columns introduced after the first release (existing rows -> Bosaso)."""
+    cols = {c["name"] for c in inspect(db.engine).get_columns("properties")}
+    if "city" not in cols:
+        db.session.execute(text(
+            "ALTER TABLE properties ADD COLUMN city VARCHAR(40) NOT NULL DEFAULT 'Bosaso'"))
+        db.session.commit()
+        print("[info] Added 'city' column: existing listings were set to Bosaso.")
+
+
 def _ensure_admin():
-    email = "AmiinAdminBosaso.local@gmail.com"  # Geli email-kaaga admin-ka
-    password = "amiinhomelocal1234"     # Geli password-kaaga
+    email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    password = os.environ.get("ADMIN_PASSWORD", "")
     explicit = bool(password)
     if not IS_PROD and not password:      # local development convenience only
-        email = email or "AmiinAdminBosaso.local@gmail.com"
-        password = "amiinhomelocal1234"
-        print("[dev] Admin login -> AmiinAdminBosaso.local@gmail.com / amiinhomelocal1234")
+        email = email or "admin@bosaso.local"
+        password = "admin123"
+        print("[dev] Admin login -> admin@bosaso.local / admin123")
     if not email or not password:
         print("[warn] ADMIN_EMAIL / ADMIN_PASSWORD not set: no admin account created.")
         return
@@ -203,7 +261,7 @@ def _ensure_admin():
     try:
         if user is None:
             db.session.add(User(name="Admin", email=email, is_admin=True,
-                                 password_hash=generate_password_hash(password)))
+                                password_hash=generate_password_hash(password)))
         else:
             user.is_admin = True
             if explicit:                  # env var is the source of truth
@@ -222,7 +280,7 @@ def _seed_samples():
         prop = Property(
             title=p["title"], description=p["description"], price=p["price"],
             type=p["type"], category=p["category"], neighborhood=p["neighborhood"],
-            latitude=p["latitude"], longitude=p["longitude"],
+            city=p.get("city", "Bosaso"), latitude=p["latitude"], longitude=p["longitude"],
             whatsapp_number=p["whatsapp_number"], is_verified=p["is_verified"],
             status="approved")
         prop.images = [Image(image_url=u) for u in p["images"]]
@@ -235,6 +293,7 @@ def init_db():
     _prepare_sqlite_file()
     with app.app_context():
         db.create_all()          # creates missing tables only (e.g. favorites)
+        _ensure_columns()
         _relax_postgres_checks()
         _ensure_admin()
         _seed_samples()
@@ -275,8 +334,21 @@ def inject_globals():
         current_user=g.get("user"),
         js_t={k: tr(lang, k) for k in JS_KEYS},
         admin_whatsapp=ADMIN_WHATSAPP,
-        neighborhoods=NEIGHBORHOODS,
-        center=BOSASO_CENTER,
+        cities=list(CITIES),
+        city_centers={name: c for name, c in CITIES.items() if c},
+        areas_by_city=NEIGHBORHOODS_BY_CITY,
+        puntland_center=PUNTLAND_CENTER,
+        puntland_zoom=PUNTLAND_ZOOM,
+        google_maps_key=GOOGLE_MAPS_KEY,
+        google_embed_key=GOOGLE_EMBED_KEY,
+        map_cfg={
+            "google": bool(GOOGLE_MAPS_KEY),
+            "labels": {
+                "osm": tr(lang, "map_osm"), "hybrid": tr(lang, "map_hybrid"),
+                "satellite": tr(lang, "map_satellite"), "google": tr(lang, "map_google"),
+                "google_hybrid": tr(lang, "map_google_hybrid"),
+            },
+        },
     )
 
 
@@ -379,6 +451,7 @@ def _number(value):
 def build_property_query(args, only_approved=True):
     """Search & filter. Supported query parameters:
 
+        city           Bosaso | Garowe | Galkayo | ...  (see CITIES)
         location       neighborhood (partial, case-insensitive)   [old: neighborhood]
         property_type  House | Apartment | Land | Commercial       [old: category]
         status         Rent | Sale                                 [old: type]
@@ -397,6 +470,10 @@ def build_property_query(args, only_approved=True):
     if category in CATEGORIES:
         query = query.where(Property.category == category)
 
+    city = (args.get("city") or "").strip()
+    if city in CITIES:
+        query = query.where(Property.city == city)
+
     location = (args.get("location") or args.get("neighborhood") or "").strip()
     if location:
         query = query.where(Property.neighborhood.ilike(_like(location), escape="\\"))
@@ -413,7 +490,8 @@ def build_property_query(args, only_approved=True):
         query = query.where(or_(
             Property.title.ilike(pattern, escape="\\"),
             Property.description.ilike(pattern, escape="\\"),
-            Property.neighborhood.ilike(pattern, escape="\\")))
+            Property.neighborhood.ilike(pattern, escape="\\"),
+            Property.city.ilike(pattern, escape="\\")))
 
     return query.order_by(Property.is_verified.desc(), Property.created_at.desc(),
                           Property.id.desc())
@@ -505,6 +583,33 @@ def commit_or_cleanup(new_urls=()):
         raise
 
 
+_PLUS_ALPHABET = "23456789CFGHJMPQRVWX"
+
+
+def plus_code(lat, lng):
+    """10-digit Plus Code (Open Location Code), e.g. '849VCWC8+R9' (~14 m cell).
+
+    Google's Maps Embed API 'place' mode accepts a plus code (not raw lat/lng)
+    as the marker location, so we convert the listing's coordinates."""
+    lat_i = min(max(int((lat + 90) * 8000), 0), 180 * 8000 - 1)
+    lng_i = int(((lng + 180) % 360) * 8000)
+    chars = []
+    for power in (20 ** 4, 20 ** 3, 20 ** 2, 20, 1):
+        chars.append(_PLUS_ALPHABET[(lat_i // power) % 20])
+        chars.append(_PLUS_ALPHABET[(lng_i // power) % 20])
+    code = "".join(chars)
+    return code[:8] + "+" + code[8:]
+
+
+def _distance_km(lat1, lng1, lat2, lng2):
+    """Great-circle distance (haversine)."""
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dphi, dlmb = p2 - p1, math.radians(lng2 - lng1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlmb / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
 def parse_property_form(form, is_admin):
     errors, data = [], {}
 
@@ -534,6 +639,11 @@ def parse_property_form(form, is_admin):
         errors.append("e_category")
     data["category"] = form.get("category")
 
+    city = form.get("city", "").strip()
+    if city not in CITIES:
+        errors.append("e_city")
+    data["city"] = city
+
     area = form.get("neighborhood", "").strip()
     if not area or len(area) > 60:
         errors.append("e_area")
@@ -546,6 +656,10 @@ def parse_property_form(form, is_admin):
     except ValueError:
         errors.append("e_coords")
         lat = lng = None
+    else:
+        centre = CITIES.get(city)
+        if centre and _distance_km(lat, lng, *centre) > MAX_CITY_DISTANCE_KM:
+            errors.append("e_coords_city")
     data["latitude"], data["longitude"] = lat, lng
 
     wa = clean_whatsapp(form.get("whatsapp_number"))
@@ -562,7 +676,7 @@ def _form_values(prop):
     return {
         "title": prop.title, "description": prop.description or "",
         "price": int(price) if price == int(price) else price,
-        "type": prop.type, "category": prop.category,
+        "type": prop.type, "category": prop.category, "city": prop.city,
         "neighborhood": prop.neighborhood, "latitude": prop.latitude,
         "longitude": prop.longitude, "whatsapp_number": prop.whatsapp_number,
         "is_verified": "1" if prop.is_verified else "",
@@ -570,7 +684,7 @@ def _form_values(prop):
 
 
 def _apply_form(prop, data):
-    for field in ("title", "description", "price", "type", "category",
+    for field in ("title", "description", "price", "type", "category", "city",
                   "neighborhood", "latitude", "longitude", "whatsapp_number"):
         setattr(prop, field, data[field])
 
@@ -598,7 +712,8 @@ def property_detail(pid):
         abort(404)
     return render_template("property.html",
                            p=prop.to_dict(favorite_ids_for(g.user)),
-                           manageable=manageable)
+                           manageable=manageable,
+                           plus_code=plus_code(prop.latitude, prop.longitude))
 
 
 @app.route("/lang/<code>")
