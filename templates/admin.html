@@ -14,7 +14,7 @@
       {% if p.is_verified %}<span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">{{ t('verified') }} 🛡️</span>{% endif %}
     </div>
     <p class="text-sm text-slate-500 mt-1">
-      {{ t('type_' ~ p.type) }} · {{ t('cat_' ~ p.category) }} · 📍 {{ p.neighborhood }} · ${{ '{:,.0f}'.format(p.price) }}
+      {{ t('type_' ~ p.type) }} · {{ t('cat_' ~ p.category) }} · 📍 {{ p.neighborhood }}, {{ p.city }} · ${{ '{:,.0f}'.format(p.price) }}
       · {{ t('owner') }}: {{ p.owner_name or '—' }}{% if p.owner_email %} ({{ p.owner_email }}){% endif %}
       · <a class="text-blue-700" href="https://wa.me/{{ p.whatsapp_number }}" target="_blank" rel="noopener">+{{ p.whatsapp_number }}</a>
     </p>
