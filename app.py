@@ -189,9 +189,9 @@ def _relax_postgres_checks():
 
 
 def _ensure_admin():
-email = "AmiinAdminBosaso.local@gmail.com"  # <--- Halkan geli email-kaaga admin-ka
-password = "amiinhomelocal1234"     # <--- Halkan geli password-kaaga
-explicit = bool(password)
+    email = "AmiinAdminBosaso.local@gmail.com"  # Geli email-kaaga admin-ka
+    password = "amiinhomelocal1234"     # Geli password-kaaga
+    explicit = bool(password)
     if not IS_PROD and not password:      # local development convenience only
         email = email or "AmiinAdminBosaso.local@gmail.com"
         password = "amiinhomelocal1234"
@@ -203,7 +203,7 @@ explicit = bool(password)
     try:
         if user is None:
             db.session.add(User(name="Admin", email=email, is_admin=True,
-                                password_hash=generate_password_hash(password)))
+                                 password_hash=generate_password_hash(password)))
         else:
             user.is_admin = True
             if explicit:                  # env var is the source of truth
