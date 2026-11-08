@@ -1,8 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ t('form_edit_title') if editing else t('form_add_title') }} – {{ brand }}{% endblock %}
 {% block head %}
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  {% include "_map_head.html" %}
 {% endblock %}
 
 {% block content %}
@@ -47,11 +46,20 @@
       </div>
       <p class="text-xs text-slate-400 -mt-2">{{ t('f_price_hint') }}</p>
 
-      <div>
-        <label class="block text-sm font-semibold mb-1">{{ t('f_neighborhood') }} *</label>
-        <input name="neighborhood" list="hoods" required maxlength="60" value="{{ form.get('neighborhood', '') }}"
-               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
-        <datalist id="hoods">{% for n in neighborhoods %}<option value="{{ n }}">{% endfor %}</datalist>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-semibold mb-1" for="city">{{ t('f_city') }} *</label>
+          <select id="city" name="city" required class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+            <option value="" disabled {{ 'selected' if not form.get('city') }}>{{ t('city_choose') }}</option>
+            {% for c in cities %}<option value="{{ c }}" {{ 'selected' if form.get('city') == c }}>{{ c }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-1">{{ t('f_neighborhood') }} *</label>
+          <input id="neighborhood" name="neighborhood" list="hoods" required maxlength="60" value="{{ form.get('neighborhood', '') }}"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+          <datalist id="hoods"></datalist>
+        </div>
       </div>
 
       <div>
@@ -120,13 +128,27 @@
 
 {% block scripts %}
 <script>
-  const CENTER = [{{ center[0] }}, {{ center[1] }}];
+  const CENTER = [{{ puntland_center[0] }}, {{ puntland_center[1] }}];
+  const ZOOM = {{ puntland_zoom }};
+  const CITY_CENTERS = {{ city_centers|tojson }};
+  const AREAS = {{ areas_by_city|tojson }};
+  const citySel = document.getElementById('city');
   const latEl = document.getElementById('lat');
   const lngEl = document.getElementById('lng');
-  const map = L.map('map').setView(CENTER, 13);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
-  }).addTo(map);
+  const map = L.map('map').setView(CITY_CENTERS[citySel.value] || CENTER, CITY_CENTERS[citySel.value] ? 13 : ZOOM);
+  addBaseLayers(map);
+
+  // Neighbourhood suggestions + map position follow the selected city
+  function updateAreas() {
+    const names = AREAS[citySel.value] || [];
+    document.getElementById('hoods').innerHTML = names.map(n => '<option value="' + n.replace(/"/g, '&quot;') + '">').join('');
+  }
+  citySel.addEventListener('change', () => {
+    updateAreas();
+    const c = CITY_CENTERS[citySel.value];
+    if (c && !marker) map.setView(c, 13);          // don't jump away if a pin is already placed
+  });
+  updateAreas();
 
   let marker = null;
   function setPoint(lat, lng) {
