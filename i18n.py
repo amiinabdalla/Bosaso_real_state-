@@ -11,8 +11,8 @@ _T = {
     "nav_login": ("Login", "Gal"),
     "nav_register": ("Register", "Isdiiwaangeli"),
     "nav_logout": ("Logout", "Ka bax"),
-    "tagline": ("Verified houses & land in Bosaso, Somalia",
-                "Guryo iyo dhul la xaqiijiyey oo Boosaaso ah"),
+    "tagline": ("Verified houses & land across Puntland, Somalia",
+                "Guryo iyo dhul la xaqiijiyey oo ku yaal Puntland"),
     "footer_note": ("Map data © OpenStreetMap contributors",
                     "Xogta khariidadda © OpenStreetMap contributors"),
 
@@ -20,6 +20,9 @@ _T = {
     "filter_type": ("Type", "Nooca"),
     "filter_category": ("Category", "Qaybta"),
     "filter_area": ("Neighborhood", "Xaafadda"),
+    "filter_city": ("City", "Magaalada"),
+    "f_city": ("City", "Magaalada"),
+    "city_choose": ("Choose a city…", "Dooro magaalo…"),
     "filter_location": ("Location (neighborhood)", "Goobta (xaafadda)"),
     "filter_property_type": ("Property type", "Nooca hantida"),
     "filter_status": ("Rent / Sale", "Kiro / Iib"),
@@ -62,6 +65,19 @@ _T = {
     "fav_empty": ("You have not saved any properties yet. Tap the heart on a listing to save it.",
                   "Weli wax liis ah ma aadan kaydin. Riix qalbiga liiska si aad u kaydiso."),
     "fav_browse": ("Browse properties", "Daawo liisaska"),
+
+    # Google Maps links / embed (listing page)
+    "gmaps_open": ("Open in Google Maps", "Ku fur Google Maps"),
+    "gmaps_directions": ("Directions", "Jidka u socda"),
+    "map_tab_ours": ("Map", "Khariidad"),
+    "map_tab_google": ("Google Maps", "Google Maps"),
+
+    # map layers
+    "map_osm": ("Street map", "Khariidad waddooyin"),
+    "map_hybrid": ("Satellite + names", "Satellite + magacyo"),
+    "map_satellite": ("Satellite", "Satellite"),
+    "map_google": ("Google Maps", "Google Maps"),
+    "map_google_hybrid": ("Google Satellite", "Google Satellite"),
 
     # photo gallery / upload
     "car_prev": ("Previous photo", "Sawirka hore"),
@@ -165,8 +181,11 @@ _T = {
     "e_type": ("Choose Rent or Sale.", "Dooro Kiro ama Iib."),
     "e_category": ("Choose a category.", "Dooro qayb."),
     "e_area": ("Neighborhood is required.", "Xaafadda waa loo baahan yahay."),
-    "e_coords": ("Pick a location inside the Bosaso area on the map.",
-                 "Khariidadda ka dooro goob ku taal aagga Boosaaso."),
+    "e_coords": ("Pick a location inside Puntland on the map.",
+                 "Khariidadda ka dooro goob ku taal Puntland."),
+    "e_city": ("Choose a city.", "Dooro magaalo."),
+    "e_coords_city": ("The pin is too far from the selected city. Check the city or move the pin.",
+                      "Calaamaddu aad bay uga fog tahay magaalada la doortay. Hubi magaalada ama dhaqaaji calaamadda."),
     "e_whatsapp": ("Enter a valid WhatsApp number with country code (no leading 0).",
                    "Geli lambar WhatsApp oo sax ah oo leh koodhka dalka (0 ha ku bilaabin)."),
     "e_images_type": ("Only JPG, PNG or WebP photos are allowed.",
