@@ -11,9 +11,9 @@
   <meta property="og:type" content="website">
   <meta property="og:title" content="{{ self.title() }}">
   <meta property="og:description" content="{{ self.meta_desc() }}">
-  <meta property="og:image" content="{% block og_image %}{{ url_for('static', filename='logo.png', _external=True) }}{% endblock %}">
+  <meta property="og:image" content="{% block og_image %}{{ url_for('static', filename='vesta-logo.png', _external=True) }}{% endblock %}">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
-  <link rel="apple-touch-icon" href="{{ url_for('static', filename='logo.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='vesta-logo.png') }}">
   <script src="https://cdn.tailwindcss.com"></script>
   {% block head %}{% endblock %}
 </head>
@@ -22,9 +22,9 @@
   <header class="bg-gradient-to-r from-blue-800 to-blue-600 text-white shadow">
     <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
       <a href="{{ url_for('index') }}" class="flex items-center gap-3">
-        <img src="{{ url_for('static', filename='logo.svg') }}" alt="{{ brand }}" class="w-11 h-11 rounded-2xl ring-2 ring-white/30">
+        <img src="{{ url_for('static', filename='vesta-logo.svg') }}" alt="Vesta Properties" class="w-11 h-11 rounded-2xl ring-2 ring-white/30 bg-white/10 p-1">
         <span class="leading-tight">
-          <span class="block text-xl font-extrabold tracking-tight">{{ brand }}</span>
+          <span class="block text-xl font-extrabold tracking-tight">Vesta Properties</span>
           <span class="block text-[11px] text-blue-100 max-w-[230px] sm:max-w-none">{{ t('tagline') }}</span>
         </span>
       </a>
@@ -65,7 +65,7 @@
   </div>
 
   <footer class="text-center text-xs text-slate-400 py-6">
-    © {{ brand }} · {{ t('footer_note') }}
+    © Vesta Properties · {{ t('footer_note') }}
   </footer>
 
   <script>window.FAV_T = {{ {'add': t('fav_add'), 'remove': t('fav_remove')}|tojson }};</script>
