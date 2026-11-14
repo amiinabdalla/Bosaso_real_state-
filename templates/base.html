@@ -18,18 +18,18 @@
   <script src="https://cdn.tailwindcss.com"></script>
   {% block head %}{% endblock %}
 <header class="bg-gradient-to-r from-blue-950 via-blue-900 to-blue-700 text-white shadow-lg border-b border-blue-800">
-    <div class="max-w-7xl mx-auto px-4 py-3.5 flex flex-wrap items-center justify-between gap-3">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
       
-      <!-- Brand-ka EJAR oo keliya -->
+      <!-- Logo-ga Cusub ee EJAR -->
       <a href="{{ url_for('index') }}" class="flex items-center gap-3.5 group">
-        <div class="w-12 h-12 rounded-xl bg-white/10 ring-2 ring-white/30 flex items-center justify-center shadow-md group-hover:bg-white/20 transition duration-300">
-          <svg class="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V9.5z"/>
-          </svg>
+        <!-- Sanduuq cad oo sawirka si fiican u soo saaraya -->
+        <div class="bg-white rounded-xl px-2.5 py-1.5 shadow-md ring-2 ring-white/30 group-hover:scale-105 transition duration-200 flex items-center justify-center">
+          <img src="{{ url_for('static', filename='ejar-logo.jpg') }}" alt="EJAR Real Estate" class="h-10 w-auto object-contain">
         </div>
-        <div class="leading-tight">
-          <span class="block text-2xl font-black tracking-widest uppercase text-white font-sans">EJAR</span>
-          <span class="block text-[11px] font-semibold text-blue-200 tracking-wider uppercase">Verified Homes & Land · Bosaso</span>
+        
+        <div class="leading-tight hidden sm:block">
+          <span class="block text-xl font-black tracking-widest uppercase text-white">EJAR</span>
+          <span class="block text-[11px] font-medium text-blue-200 tracking-wide">Your Property, Our Priority · Bosaso</span>
         </div>
       </a>
 
