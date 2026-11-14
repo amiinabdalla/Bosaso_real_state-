@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="{{ lang }}">
 <head>
@@ -19,20 +20,20 @@
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
 
-  <header class="bg-gradient-to-r from-blue-800 to-blue-600 text-white shadow">
-    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+<header class="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-600 text-white shadow-md">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-3">
       
-      <!-- Logo-ga cusub ee Vesta (SVG nadiif ah oo la socda buluugga) -->
-      <a href="{{ url_for('index') }}" class="flex items-center gap-3 group">
-        <div class="w-11 h-11 rounded-2xl bg-white/15 ring-2 ring-white/30 flex items-center justify-center group-hover:bg-white/25 transition">
-          <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <!-- Logo-ga iyo Magaca oo la weyneeyay -->
+      <a href="{{ url_for('index') }}" class="flex items-center gap-3.5 group">
+        <div class="w-12 h-12 rounded-2xl bg-white/15 ring-2 ring-white/40 flex items-center justify-center shadow-inner group-hover:bg-white/25 transition">
+          <svg class="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V9.5z"/>
           </svg>
         </div>
-        <span class="leading-tight">
-          <span class="block text-xl font-extrabold tracking-tight">Vesta Properties</span>
-          <span class="block text-[11px] text-blue-100 max-w-[230px] sm:max-w-none">{{ t('tagline') }}</span>
-        </span>
+        <div class="leading-none">
+          <span class="block text-2xl font-black tracking-wider uppercase">VESTA HOMES</span>
+          <span class="block text-xs font-medium text-blue-200 mt-1 tracking-wide">Verified Houses & Land · Bosaso</span>
+        </div>
       </a>
 
       <!-- Menu-ga Midig -->
@@ -53,7 +54,7 @@
           <a href="{{ url_for('login') }}" class="px-3 py-1.5 rounded-lg hover:bg-white/10">{{ t('nav_login') }}</a>
           <a href="{{ url_for('register') }}" class="px-3 py-1.5 rounded-lg hover:bg-white/10">{{ t('nav_register') }}</a>
         {% endif %}
-        <a href="{{ url_for('add_property') }}" class="bg-white text-blue-700 font-semibold px-4 py-2 rounded-lg hover:bg-blue-50">+ {{ t('nav_add') }}</a>
+        <a href="{{ url_for('add_property') }}" class="bg-white text-blue-700 font-bold px-4 py-2 rounded-lg hover:bg-blue-50 shadow">+ {{ t('nav_add') }}</a>
       </nav>
     </div>
   </header>
