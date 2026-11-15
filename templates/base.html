@@ -4,11 +4,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Vesta Properties – {{ t('tagline') }}{% endblock %}</title>
-  <meta name="description" content="{% block meta_desc %}{{ t('tagline') }}{% endblock %}">
+  <title>{% block title %}EJAR – Real Estate & Properties{% endblock %}</title>
+  <meta name="description" content="{% block meta_desc %}EJAR Real Estate & Properties - Bosaso{% endblock %}">
   <meta name="theme-color" content="#1d4ed8">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <meta property="og:site_name" content="Vesta Properties">
+  <meta property="og:site_name" content="EJAR">
   <meta property="og:type" content="website">
   <meta property="og:title" content="{{ self.title() }}">
   <meta property="og:description" content="{{ self.meta_desc() }}">
@@ -17,6 +17,7 @@
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='logo.png') }}">
   <script src="https://cdn.tailwindcss.com"></script>
   {% block head %}{% endblock %}
+</head>
 <header class="bg-gradient-to-r from-blue-950 via-blue-900 to-blue-700 text-white shadow-lg border-b border-blue-800">
     <div class="max-w-7xl mx-auto px-4 py-3.5 flex flex-wrap items-center justify-between gap-3">
       
