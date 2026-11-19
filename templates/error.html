@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} – {{ brand }}{% endblock %}
+{% block content %}
+<main class="max-w-md mx-auto px-4 py-16 text-center">
+  <img src="{{ url_for('static', filename='logo.svg') }}" alt="" class="w-20 h-20 mx-auto rounded-2xl">
+  <p class="text-5xl font-extrabold text-blue-700 mt-4">{{ code }}</p>
+  <p class="mt-2 text-slate-600">{{ t(message_key) }}</p>
+  <a href="{{ url_for('index') }}" class="inline-block mt-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-lg">{{ t('btn_home') }}</a>
+</main>
+{% endblock %}

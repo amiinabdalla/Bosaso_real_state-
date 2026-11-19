@@ -1,0 +1,9 @@
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% if google_maps_key %}
+<script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_key }}&amp;language={{ lang }}"></script>
+<script src="https://unpkg.com/leaflet.gridlayer.googlemutant@0.16.0/dist/Leaflet.GoogleMutant.js"></script>
+{% endif %}
+<script>window.MAP_CFG = {{ map_cfg|tojson }};</script>
+<script src="{{ url_for('static', filename='maplayers.js') }}?v=1"></script>
+<style>.leaflet-div-icon.pin{background:none;border:none}</style>
