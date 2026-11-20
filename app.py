@@ -32,6 +32,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
 
 from i18n import JS_KEYS, LANGS, tr
 from models import Favorite, Image, Property, User, db
@@ -55,6 +56,9 @@ if USE_CLOUD:
 DATA_DIR = os.environ.get("DATA_DIR", BASE_DIR)
 DB_PATH = os.path.join(DATA_DIR, "bosaso_realestate.db")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
+PRIVATE_DOC_DIR = os.path.join(DATA_DIR, "private_docs")
+os.makedirs(PRIVATE_DOC_DIR, exist_ok=True)
+ALLOWED_DOC_EXT = {"pdf", "jpg", "jpeg", "png", "webp"}
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 BRAND_NAME = os.environ.get("BRAND_NAME", "Puntland Homes")
@@ -572,6 +576,36 @@ def remove_upload(url):
                 app.logger.warning("Cloudinary delete failed: %s", exc)
 
 
+def save_ownership_doc(file_storage):
+    """Save private ownership document (PDF or image). Returns stored filename/URL."""
+    if not file_storage or not file_storage.filename:
+        return None
+    ext = file_storage.filename.rsplit(".", 1)[-1].lower() if "." in file_storage.filename else ""
+    if ext not in ALLOWED_DOC_EXT:
+        raise ImageError("e_doc_type")
+    safe_name = f"{uuid.uuid4().hex}.{ext}"
+    if USE_CLOUD:
+        res = cloudinary.uploader.upload(
+            file_storage.stream,
+            folder="ejar-private-docs",
+            resource_type="auto",
+            public_id=safe_name.rsplit(".", 1)[0],
+        )
+        return res["secure_url"]
+    file_storage.save(os.path.join(PRIVATE_DOC_DIR, safe_name))
+    return safe_name
+
+
+def remove_ownership_doc(doc_ref):
+    if not doc_ref:
+        return
+    if not doc_ref.startswith("http"):
+        try:
+            os.remove(os.path.join(PRIVATE_DOC_DIR, os.path.basename(doc_ref)))
+        except OSError:
+            pass
+
+
 def commit_or_cleanup(new_urls=()):
     """Commit; if it fails, roll back and delete photos we just stored."""
     try:
@@ -612,6 +646,16 @@ def _distance_km(lat1, lng1, lat2, lng2):
 
 def parse_property_form(form, is_admin):
     errors, data = [], {}
+
+    owner_name = form.get("owner_name", "").strip()
+    if not owner_name or len(owner_name) > 120:
+        errors.append("e_owner_name")
+    data["owner_name"] = owner_name
+
+    owner_role = form.get("owner_role", "Owner").strip()
+    if owner_role not in ("Owner", "Agent", "Broker", "Family"):
+        owner_role = "Owner"
+    data["owner_role"] = owner_role
 
     title = form.get("title", "").strip()
     if not title or len(title) > 120:
@@ -685,7 +729,8 @@ def _form_values(prop):
 
 def _apply_form(prop, data):
     for field in ("title", "description", "price", "type", "category", "city",
-                  "neighborhood", "latitude", "longitude", "whatsapp_number"):
+                  "neighborhood", "latitude", "longitude", "whatsapp_number",
+                  "owner_name", "owner_role"):
         setattr(prop, field, data[field])
 
 
@@ -993,10 +1038,12 @@ def delete_property(pid):
     if not can_manage(prop):
         abort(403)
     urls = [img.image_url for img in prop.images]
+    doc_ref = prop.ownership_doc
     db.session.delete(prop)                      # cascades images + favorites
     db.session.commit()
     for url in urls:
         remove_upload(url)
+    remove_ownership_doc(doc_ref)
     flash_t("flash_deleted", "success")
     back = request.form.get("back")
     return redirect(back if back in (url_for("admin"), url_for("dashboard"))
@@ -1055,6 +1102,15 @@ def admin_action(pid):
     flash_t("flash_status", "success")
     return redirect(url_for("admin"))
 
+@app.route("/admin/doc/<int:pid>")
+@admin_required
+def admin_view_doc(pid):
+    prop = get_property_or_404(pid)
+    if not prop.ownership_doc:
+        abort(404)
+    if prop.ownership_doc.startswith("http"):
+        return redirect(prop.ownership_doc)
+    return send_from_directory(PRIVATE_DOC_DIR, os.path.basename(prop.ownership_doc))
 
 # --------------------------------------------------------------------------
 # Errors
