@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}{{ t('form_edit_title') if editing else t('form_add_title') }} – {{ brand }}{% endblock %}
+{% block head %}
+  {% include "_map_head.html" %}
+{% endblock %}
+
+{% block content %}
+<main class="max-w-5xl mx-auto px-4 py-6">
+  <h1 class="text-xl font-bold mb-1">{{ t('form_edit_title') if editing else t('form_add_title') }}</h1>
+  {% if not current_user.is_admin %}
+    <p class="text-sm text-slate-500 mb-4">{{ t('review_note') }}</p>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-2">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+
+    <section class="bg-white rounded-xl shadow p-5 space-y-4">
+      <div>
+        <label class="block text-sm font-semibold mb-1">{{ t('f_title') }} *</label>
+        <input name="title" required maxlength="120" value="{{ form.get('title', '') }}"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+      </div>
+      <div>
+        <label class="block text-sm font-semibold mb-1">{{ t('f_description') }}</label>
+        <textarea name="description" rows="4" maxlength="2000"
+                  class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">{{ form.get('description', '') }}</textarea>
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="block text-sm font-semibold mb-1">{{ t('filter_type') }} *</label>
+          <select name="type" required class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+            {% for x in ['Rent', 'Sale'] %}<option value="{{ x }}" {{ 'selected' if form.get('type') == x }}>{{ t('type_' ~ x) }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-1">{{ t('filter_category') }} *</label>
+          <select name="category" required class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+            {% for x in ['House', 'Apartment', 'Land', 'Commercial'] %}<option value="{{ x }}" {{ 'selected' if form.get('category') == x }}>{{ t('cat_' ~ x) }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-1">{{ t('f_price') }} *</label>
+          <input type="number" name="price" min="1" step="any" required value="{{ form.get('price', '') }}"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 -mt-2">{{ t('f_price_hint') }}</p>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-semibold mb-1" for="city">{{ t('f_city') }} *</label>
+          <select id="city" name="city" required class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+            <option value="" disabled {{ 'selected' if not form.get('city') }}>{{ t('city_choose') }}</option>
+            {% for c in cities %}<option value="{{ c }}" {{ 'selected' if form.get('city') == c }}>{{ c }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-1">{{ t('f_neighborhood') }} *</label>
+          <input id="neighborhood" name="neighborhood" list="hoods" required maxlength="60" value="{{ form.get('neighborhood', '') }}"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+          <datalist id="hoods"></datalist>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-semibold mb-1">{{ t('f_whatsapp') }} *</label>
+        <input name="whatsapp_number" required inputmode="numeric" value="{{ form.get('whatsapp_number', '') }}"
+               placeholder="252907123456" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+        <p class="text-xs text-slate-400 mt-1">{{ t('f_whatsapp_hint') }}</p>
+      </div>
+
+      {% if images %}
+      <div>
+        <p class="block text-sm font-semibold mb-2">{{ t('f_current_photos') }}</p>
+        <div class="grid grid-cols-3 gap-2">
+          {% for img in images %}
+            <label class="relative block cursor-pointer">
+              <img src="{{ img.url }}" alt="" class="w-full h-20 object-cover rounded border">
+              <input type="checkbox" name="delete_image" value="{{ img.id }}" class="absolute top-1 right-1 w-4 h-4 accent-red-600">
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div>
+        <label class="block text-sm font-semibold mb-1">{{ t('f_photos') }}</label>
+        <input type="file" id="images" name="images" accept="image/jpeg,image/png,image/webp" multiple
+               class="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:font-semibold file:text-blue-700">
+        <p class="text-xs text-slate-400 mt-1">{{ t('f_photos_hint') }}</p>
+        <p id="pickedCount" class="text-xs text-blue-700 font-semibold mt-1"></p>
+        <div id="preview" class="grid grid-cols-3 gap-2 mt-2"></div>
+      </div>
+
+      {% if current_user.is_admin %}
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" name="is_verified" value="1" {{ 'checked' if form.get('is_verified') }} class="w-4 h-4 accent-blue-600">
+        ✔ {{ t('f_verified') }}
+      </label>
+      {% endif %}
+    </section>
+
+    <section class="bg-white rounded-xl shadow p-5 space-y-4 h-fit">
+      <div>
+        <h2 class="text-sm font-semibold">{{ t('location') }} *</h2>
+        <p class="text-xs text-slate-500">{{ t('f_location_hint') }}</p>
+      </div>
+      <div id="map" class="h-72 rounded-lg overflow-hidden border border-slate-200"></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-semibold mb-1">{{ t('f_lat') }}</label>
+          <input id="lat" name="latitude" required value="{{ form.get('latitude', '') }}" placeholder="11.2842"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-1">{{ t('f_lng') }}</label>
+          <input id="lng" name="longitude" required value="{{ form.get('longitude', '') }}" placeholder="49.1816"
+                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+        </div>
+      </div>
+      <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg px-4 py-3">
+        {{ t('f_save') }}
+      </button>
+    </section>
+  </form>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const CENTER = [{{ puntland_center[0] }}, {{ puntland_center[1] }}];
+  const ZOOM = {{ puntland_zoom }};
+  const CITY_CENTERS = {{ city_centers|tojson }};
+  const AREAS = {{ areas_by_city|tojson }};
+  const citySel = document.getElementById('city');
+  const latEl = document.getElementById('lat');
+  const lngEl = document.getElementById('lng');
+  const map = L.map('map').setView(CITY_CENTERS[citySel.value] || CENTER, CITY_CENTERS[citySel.value] ? 13 : ZOOM);
+  addBaseLayers(map);
+
+  // Neighbourhood suggestions + map position follow the selected city
+  function updateAreas() {
+    const names = AREAS[citySel.value] || [];
+    document.getElementById('hoods').innerHTML = names.map(n => '<option value="' + n.replace(/"/g, '&quot;') + '">').join('');
+  }
+  citySel.addEventListener('change', () => {
+    updateAreas();
+    const c = CITY_CENTERS[citySel.value];
+    if (c && !marker) map.setView(c, 13);          // don't jump away if a pin is already placed
+  });
+  updateAreas();
+
+  let marker = null;
+  function setPoint(lat, lng) {
+    latEl.value = lat.toFixed(6);
+    lngEl.value = lng.toFixed(6);
+    if (!marker) {
+      marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+      marker.on('dragend', () => {
+        const p = marker.getLatLng();
+        latEl.value = p.lat.toFixed(6);
+        lngEl.value = p.lng.toFixed(6);
+      });
+    } else {
+      marker.setLatLng([lat, lng]);
+    }
+  }
+  map.on('click', e => setPoint(e.latlng.lat, e.latlng.lng));
+  function fromInputs() {
+    const lat = parseFloat(latEl.value), lng = parseFloat(lngEl.value);
+    if (!isNaN(lat) && !isNaN(lng)) { setPoint(lat, lng); map.setView([lat, lng], 15); }
+  }
+  latEl.addEventListener('change', fromInputs);
+  lngEl.addEventListener('change', fromInputs);
+  fromInputs();
+
+  // ---- multiple photo picker: preview + client-side checks ----
+  const imgInput = document.getElementById('images');
+  const preview = document.getElementById('preview');
+  const pickedCount = document.getElementById('pickedCount');
+  const MAX_FILES = 6, MAX_BYTES = 12 * 1024 * 1024;
+  const MSG_COUNT = {{ t('e_images_count')|tojson }};
+  const MSG_BIG = {{ t('e_image_big')|tojson }};
+  const MSG_PICKED = {{ t('photos_selected')|tojson }};
+
+  function keptExisting() {
+    const all = document.querySelectorAll('input[name=delete_image]').length;
+    const removed = document.querySelectorAll('input[name=delete_image]:checked').length;
+    return all - removed;
+  }
+  imgInput.addEventListener('change', () => {
+    preview.innerHTML = ''; pickedCount.textContent = '';
+    const files = [...imgInput.files];
+    if (files.length + keptExisting() > MAX_FILES) { alert(MSG_COUNT); imgInput.value = ''; return; }
+    if (files.some(f => f.size > MAX_BYTES)) { alert(MSG_BIG); imgInput.value = ''; return; }
+    files.forEach(f => {
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(f);
+      img.className = 'w-full h-20 object-cover rounded border';
+      img.onload = () => URL.revokeObjectURL(img.src);
+      preview.appendChild(img);
+    });
+    if (files.length) pickedCount.textContent = MSG_PICKED.replace('{n}', files.length);
+  });
+</script>
+{% endblock %}
